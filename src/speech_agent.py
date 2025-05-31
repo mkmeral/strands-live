@@ -7,13 +7,19 @@ from .audio_streamer import AudioStreamer
 class SpeechAgent:
     """High-level speech agent that orchestrates audio streaming and bedrock communication."""
     
-    def __init__(self, model_id='amazon.nova-sonic-v1:0', region='us-east-1'):
-        """Initialize the speech agent with its components."""
+    def __init__(self, model_id='amazon.nova-sonic-v1:0', region='us-east-1', tool_handler=None):
+        """Initialize the speech agent with its components.
+        
+        Args:
+            model_id: The Bedrock model ID to use
+            region: AWS region
+            tool_handler: Optional tool handler to use (defaults to ToolHandler)
+        """
         self.model_id = model_id
         self.region = region
         
-        # Initialize tool handler
-        self.tool_handler = ToolHandler()
+        # Initialize tool handler (use provided or default)
+        self.tool_handler = tool_handler if tool_handler is not None else ToolHandler()
         
         # Initialize Bedrock stream manager with tool handler
         self.bedrock_stream_manager = BedrockStreamManager(
