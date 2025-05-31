@@ -3,7 +3,9 @@ import argparse
 import warnings
 from .speech_agent import SpeechAgent
 from .strands_tool_handler import StrandsToolHandler
-from .tool_handler import ToolHandler
+
+# Import Strands tools
+from strands_tools import current_time, calculator
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -12,25 +14,38 @@ warnings.filterwarnings("ignore")
 DEBUG = False
 
 
-async def main(debug=False, use_strands=True):
+def get_default_tools():
+    """Get the default set of tools for the speech agent.
+    
+    Returns:
+        List of Strands tool functions to register.
+    """
+    return [
+        current_time,
+        calculator,
+        # Add more tools here as needed
+    ]
+
+
+async def main(debug=False, tools=None):
     """Main function to run the application.
     
     Args:
         debug: Enable debug mode
-        use_strands: Use StrandsToolHandler (default) or original ToolHandler
+        tools: List of Strands tools to use (defaults to get_default_tools())
     """
     global DEBUG
     DEBUG = debug
 
-    # Create tool handler based on preference
-    if use_strands:
-        print("🚀 Using Strands Agents SDK tools...")
-        tool_handler = StrandsToolHandler()
-    else:
-        print("🔧 Using original tool handler...")
-        tool_handler = ToolHandler()
+    # Use provided tools or default set
+    if tools is None:
+        tools = get_default_tools()
+
+    # Create Strands tool handler with configured tools
+    print(f"🚀 Using Strands Agents SDK with {len(tools)} tools...")
+    tool_handler = StrandsToolHandler(tools=tools)
     
-    # Create speech agent with selected tool handler
+    # Create speech agent with Strands tool handler
     speech_agent = SpeechAgent(
         model_id='amazon.nova-sonic-v1:0', 
         region='us-east-1',
@@ -57,8 +72,6 @@ def run_cli():
     """Entry point for the CLI application."""
     parser = argparse.ArgumentParser(description='Nova Sonic Python Streaming')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--original-tools', action='store_true', 
-                       help='Use original tool handler instead of Strands tools')
     args = parser.parse_args()
     
     # Set your AWS credentials here or use environment variables
@@ -68,7 +81,7 @@ def run_cli():
 
     # Run the main function
     try:
-        asyncio.run(main(debug=args.debug, use_strands=not args.original_tools))
+        asyncio.run(main(debug=args.debug))
     except Exception as e:
         print(f"Application error: {e}")
         if args.debug:

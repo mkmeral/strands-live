@@ -11,16 +11,16 @@ A **high-performance, real-time speech-based AI agent system** that seamlessly i
 - **Configurable audio parameters** (sample rate, channels, etc.)
 
 ### **🤖 Intelligent Agent System**
-- **Dual tool handler architecture** (Strands SDK + Original)
+- **Strands Agents SDK integration** for advanced tool capabilities
 - **Extensible tool ecosystem** with hot-reloading capabilities
 - **Advanced conversation management** with context preservation
 - **Error handling and recovery** for robust operation
 
-### **🛠️ Strands Agents SDK Integration**
-- **Default Strands tools** for enhanced functionality
-- **Seamless tool proxy** between systems
+### **🛠️ Enhanced Tool Management**
+- **Centralized tool configuration** at application level
 - **Dynamic tool loading** and management
-- **Backward compatibility** with original tools
+- **Dependency injection** for better testability
+- **Built-in tools**: `current_time` and `calculator` by default
 
 ### **☁️ AWS Integration**
 - **Amazon Bedrock** for LLM interactions
@@ -37,51 +37,51 @@ speech-based-agents/
 ├── README.md                  # Documentation
 ├── src/                       # Source code
 │   ├── __init__.py
-│   ├── cli.py                 # Command-line interface
+│   ├── cli.py                 # Command-line interface & tool configuration
 │   ├── speech_agent.py        # Main agent orchestrator
 │   ├── audio_streamer.py      # Audio processing
 │   ├── bedrock_streamer.py    # AWS Bedrock integration
 │   ├── strands_tool_handler.py # Strands SDK integration
-│   ├── tool_handler.py        # Original tool handler
+│   ├── tool_handler.py        # Original tool handler (legacy)
 │   └── tool_handler_base.py   # Base tool handler class
 └── tests/                     # Test suite
-    ├── unit/                  # Unit tests (128 tests)
-    └── integration/           # Integration tests (18 tests)
+    ├── unit/                  # Unit tests (134 tests)
+    └── integration/           # Integration tests (20 tests)
 ```
 
 ## 🏗️ Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CLI Interface                            │
-│                     (main.py, cli.py)                          │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────────────┐
-│                   Speech Agent                                  │
-│              (High-level orchestrator)                         │
-└─┬─────────────────────────────────────────────────────────────┬─┘
-  │                                                             │
-┌─▼────────────────┐  ┌──────────────────┐  ┌─────────────────▼─┐
-│  Audio Streamer  │  │ Bedrock Stream   │  │   Tool Handlers   │
-│   (PyAudio)      │  │    Manager       │  │                   │
-│                  │  │  (AWS Bedrock)   │  │ ┌───────────────┐ │
-│ • Microphone     │  │                  │  │ │ Strands Tools │ │
-│ • Speakers       │  │ • Nova Sonic     │  │ │   (Default)   │ │
-│ • Voice Activity │  │ • Streaming      │  │ └───────────────┘ │
-│   Detection      │  │ • Tool Events    │  │ ┌───────────────┐ │
-└──────────────────┘  └──────────────────┘  │ │Original Tools │ │
-                                            │ │(Compatibility)│ │
-                                            │ └───────────────┘ │
-                                            └───────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CLI Interface                                        │
+│                     (main.py, cli.py)                                      │
+│                  Tool Configuration Layer                                   │
+└───────────────────────────┬─────────────────────────────────────────────────┘
+                           │
+┌───────────────────────────┼─────────────────────────────────────────────────┐
+│                   Speech Agent                                              │
+│              (High-level orchestrator)                                     │
+├─┬─────────────────────────────────────────────────────────────────────────┬─┤
+  │                                                                         │
+┌─▼────────────────┐  ┌──────────────────┐  ┌─────────────────────────────▼─┐
+│  Audio Streamer  │  │ Bedrock Stream   │  │     Strands Tool Handler       │
+│   (PyAudio)      │  │    Manager       │  │                               │
+│                  │  │  (AWS Bedrock)   │  │ ┌───────────────────────────┐ │
+│ • Microphone     │  │                  │  │ │     Tool Registry         │ │
+│ • Speakers       │  │ • Nova Sonic     │  │ │                           │ │
+│ • Voice Activity │  │ • Streaming      │  │ │ • current_time            │ │
+│   Detection      │  │ • Tool Events    │  │ │ • calculator              │ │
+│                  │  │ • Response       │  │ │ • [configurable tools]    │ │
+└──────────────────┘  └──────────────────┘  │ └───────────────────────────┘ │
+                                            └─────────────────────────────────┘
 ```
 
 ### **Component Responsibilities**
 
 #### **🎛️ CLI Interface** (`main.py`, `cli.py`)
 - **Entry point** with argument parsing
-- **Tool handler selection** (Strands vs Original)
-- **Configuration management** and environment setup
+- **Centralized tool configuration** via `get_default_tools()`
+- **Tool injection** into StrandsToolHandler
 - **Debug mode** and logging configuration
 
 #### **🤖 Speech Agent** (`speech_agent.py`) 
@@ -102,18 +102,11 @@ speech-based-agents/
 - **Event processing** and response handling
 - **Tool execution coordination**
 
-#### **🛠️ Tool Handlers**
-- **Strands Tool Handler** (`strands_tool_handler.py`)
-  - **Default handler** using Strands Agents SDK
-  - **Dynamic tool loading** and hot-reloading
-  - **Tool registry management** and proxy functions
-  - **Advanced tool ecosystem** integration
-
-- **Original Tool Handler** (`tool_handler.py`)
-  - **Backward compatibility** handler
-  - **Built-in tools** (date/time, order tracking)
-  - **Simple tool interface** for basic functionality
-  - **Legacy support** and migration path  
+#### **🛠️ Strands Tool Handler** (`strands_tool_handler.py`)
+- **Primary tool system** using Strands Agents SDK
+- **Dynamic tool loading** and hot-reloading
+- **Tool registry management** and execution
+- **Bedrock-compatible tool schemas**
 
 ## 📦 Installation & Setup
 
@@ -165,34 +158,24 @@ python -c "from src.speech_agent import SpeechAgent; print('✅ Installation suc
 
 ## 🎯 Usage
 
-### **Basic Usage (Strands Tools - Default)**
+### **Basic Usage**
 ```bash
-# Start with Strands Agents SDK tools (recommended)
+# Start with Strands Agents SDK tools (default configuration)
 python main.py
 
 # With debug logging
 python main.py --debug
 ```
 
-### **Original Tools (Backward Compatibility)**
-```bash
-# Use original tool handler
-python main.py --original-tools
-
-# Debug mode with original tools
-python main.py --debug --original-tools
-```
-
 ### **CLI Options**
 ```bash
-usage: main.py [-h] [--debug] [--original-tools]
+usage: main.py [-h] [--debug]
 
 Nova Sonic Python Streaming
 
 options:
-  -h, --help        show this help message and exit
-  --debug           Enable debug mode
-  --original-tools  Use original tool handler instead of Strands tools
+  -h, --help    show this help message and exit
+  --debug       Enable debug mode
 ```
 
 ### **Conversation Flow**
@@ -201,6 +184,11 @@ options:
 3. **Begin speaking**: Voice activity detection starts conversation
 4. **Natural interaction**: AI responds with voice and executes tools
 5. **End conversation**: Ctrl+C or natural conversation end
+
+### **Available Tools**
+- **current_time**: Get current date and time in various timezones
+- **calculator**: Perform mathematical calculations and expressions
+- **[Custom tools]**: Add your own via the Strands SDK
 
 ## 🧪 Testing
 
@@ -218,7 +206,7 @@ python -m pytest tests/ --cov=src --cov-report=html
 
 ### **Test Categories**
 
-#### **Unit Tests** (128 tests)
+#### **Unit Tests** (134 tests)
 ```bash
 # Core component tests
 python -m pytest tests/test_*.py -v
@@ -227,7 +215,7 @@ python -m pytest tests/test_*.py -v
 python -m pytest tests/test_strands_tool_handler.py -v
 ```
 
-#### **Integration Tests** (18 tests)
+#### **Integration Tests** (20 tests)
 ```bash
 # End-to-end integration testing
 python -m pytest tests/integration/ -v
@@ -245,15 +233,16 @@ tests/
 ├── test_cli.py                    # CLI functionality tests
 ├── test_speech_agent.py           # Main agent tests
 ├── test_strands_tool_handler.py   # Strands integration tests
-├── test_tool_handler.py           # Original tool tests
+├── test_tool_handler.py           # Original tool tests (compatibility)
 └── integration/                   # Integration tests
     ├── __init__.py
     └── test_cli_integration.py    # End-to-end tests
 ```
 
 ### **Test Results Summary**
-- **Total Tests**: 146
-- **Passing**: 143 ✅
+- **Total Tests**: 154 ✅
+- **Passing**: 154 tests
+- **Failing**: 0 tests
 - **Coverage**: Core functionality fully tested
 - **Integration**: CLI, tools, and AWS integration verified
 
@@ -261,9 +250,22 @@ tests/
 
 ### **Development Workflow**
 
-#### **1. Add New Tools (Strands Method - Recommended)**
+#### **1. Add New Tools (Recommended Method)**
 ```python
-# Create tools/my_tool.py
+# Add to src/cli.py get_default_tools() function
+from strands_tools import current_time, calculator, my_new_tool
+
+def get_default_tools():
+    return [
+        current_time,
+        calculator,
+        my_new_tool,  # Add your new tool here
+    ]
+```
+
+#### **2. Create Custom Tools**
+```python
+# Create your tool using Strands SDK
 from strands import tool
 
 @tool
@@ -281,15 +283,6 @@ def my_custom_tool(param: str) -> dict:
         "status": "success",
         "content": [{"text": f"Result: {param}"}]
     }
-```
-
-#### **2. Add New Tools (Original Method)**
-```python
-# Extend ToolHandler in src/tool_handler.py
-async def process_tool_use(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-    if tool_name == "my_new_tool":
-        return await self._my_new_tool(parameters)
-    # ... existing tools
 ```
 
 #### **3. Run Development Tests**
@@ -335,49 +328,56 @@ AUDIO_CHANNELS=1
 
 ## 📈 Recent Updates & Changelog
 
-### **🆕 Latest Changes (v2.0.0)**
+### **🆕 Latest Changes (v2.1.0)**
 
-#### **🚀 Strands Agents SDK Integration**
-- **Default tool handler** now uses Strands Agents SDK
-- **Seamless tool proxy** between Strands and original systems
-- **Hot-reloading tools** from `cwd()/tools/` directory
-- **Backward compatibility** maintained with `--original-tools` flag
+#### **🏗️ Architecture Simplification**
+- **Unified tool system** using only Strands Agents SDK
+- **Centralized tool configuration** at CLI level
+- **Dependency injection** pattern for better testability
+- **Simplified CLI interface** with streamlined options
 
-#### **🛠️ Enhanced CLI Interface**
-- **New CLI options**: `--original-tools` flag for compatibility
-- **Clear messaging**: Shows which tool system is active
-- **Improved error handling** and user feedback
-- **Extended help documentation**
+#### **🛠️ Enhanced Tool Management**
+- **Configurable tool list** via `get_default_tools()` function
+- **Easy tool addition/removal** by modifying CLI configuration
+- **Improved tool loading** with proper error handling
+- **Better tool registry management**
 
 #### **🧪 Comprehensive Testing**
-- **146 total tests** (up from 128)
-- **18 new integration tests** for end-to-end validation
-- **Tool handler compatibility** testing
-- **CLI functionality** verification
+- **154 total tests** all passing ✅
+- **Updated test coverage** for new architecture
+- **Integration test improvements** for CLI functionality
+- **Audio streamer test fixes** with proper mocking
 
 #### **📚 Documentation Updates**
-- **Complete README rewrite** with usage examples
-- **Architecture diagrams** and component breakdown
-- **Detailed installation** and setup instructions
-- **Development workflow** documentation
+- **Complete README rewrite** reflecting new architecture
+- **Updated usage examples** and development workflows
+- **Simplified installation** and setup instructions
+- **Current test status** and coverage information
 
-### **Migration Guide (v1.x → v2.0)**
+### **Migration Guide (v2.0 → v2.1)**
 
-#### **No Breaking Changes**
-- **Existing functionality** preserved
-- **Original tools** still available with `--original-tools`
-- **Same command-line interface** with new options
+#### **Breaking Changes**
+- **Removed `--original-tools` flag** from CLI (simplified interface)
+- **Tool configuration moved** to CLI level (`get_default_tools()`)
 
-#### **Recommended Updates**
+#### **Migration Steps**
 ```bash
-# Old usage (still works)
+# Old usage (no longer supported)
+python main.py --original-tools
+
+# New usage (simplified)
 python main.py
 
-# New usage (enhanced with Strands)
-python main.py  # Now uses Strands by default
+# For custom tools, modify src/cli.py instead of command flags
+```
 
-# Access original tools
-python main.py --original-tools
+#### **Developer Changes**
+```python
+# Old: Tools were hardcoded in StrandsToolHandler
+handler = StrandsToolHandler()  # Had built-in tools
+
+# New: Tools are injected via constructor
+handler = StrandsToolHandler(tools=[current_time, calculator])
 ```
 
 ## 🆘 Troubleshooting
@@ -412,7 +412,7 @@ pip install pyaudio
 pip install strands-agents
 
 # Verify installation
-python -c "from strands import Agent; print('Strands OK')"
+python -c "from strands_tools import current_time; print('Strands OK')"
 ```
 
 ### **Debug Mode**
@@ -420,12 +420,24 @@ python -c "from strands import Agent; print('Strands OK')"
 # Enable verbose logging
 python main.py --debug
 
-# Check specific components
+# Check tool configuration
 python -c "
-from src.strands_tool_handler import StrandsToolHandler
-handler = StrandsToolHandler()
-print('Available tools:', handler.get_supported_tools())
+from src.cli import get_default_tools
+tools = get_default_tools()
+print(f'Configured tools: {[tool.__name__ for tool in tools]}')
 "
+```
+
+### **Test Issues**
+```bash
+# Run specific test file
+python -m pytest tests/test_cli.py -v
+
+# Run with output capture disabled  
+python -m pytest tests/test_strands_tool_handler.py -v -s
+
+# Check test coverage
+python -m pytest tests/ --cov=src --cov-report=term-missing
 ```
 
 ## 📄 License

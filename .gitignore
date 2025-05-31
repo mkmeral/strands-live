@@ -3,3 +3,4 @@ slack_events
 **/__pycache__/*
 *.bak
 .pytest_cache
+*.logs

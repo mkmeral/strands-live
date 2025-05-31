@@ -8,8 +8,13 @@ class TestAudioStreamer:
     """Test cases for the AudioStreamer class."""
 
     @patch('src.audio_streamer.pyaudio.PyAudio')
-    def test_initialization(self, mock_pyaudio):
+    @patch('asyncio.get_event_loop')
+    def test_initialization(self, mock_get_event_loop, mock_pyaudio):
         """Test that AudioStreamer initializes correctly."""
+        # Mock event loop
+        mock_loop = Mock()
+        mock_get_event_loop.return_value = mock_loop
+        
         # Mock PyAudio and its streams
         mock_pyaudio_instance = Mock()
         mock_pyaudio.return_value = mock_pyaudio_instance
@@ -30,6 +35,7 @@ class TestAudioStreamer:
         assert audio_streamer.p == mock_pyaudio_instance
         assert audio_streamer.input_stream == mock_input_stream
         assert audio_streamer.output_stream == mock_output_stream
+        assert audio_streamer.loop == mock_loop
 
     @patch('src.audio_streamer.pyaudio.PyAudio')
     @pytest.mark.asyncio
@@ -80,8 +86,13 @@ class TestAudioStreamer:
         mock_bedrock_manager.add_audio_chunk.assert_called_once_with(test_audio_data)
 
     @patch('src.audio_streamer.pyaudio.PyAudio')
-    def test_input_callback(self, mock_pyaudio):
+    @patch('asyncio.get_event_loop')
+    def test_input_callback(self, mock_get_event_loop, mock_pyaudio):
         """Test the input callback function."""
+        # Mock event loop
+        mock_loop = Mock()
+        mock_get_event_loop.return_value = mock_loop
+        
         # Mock PyAudio
         mock_pyaudio_instance = Mock()
         mock_pyaudio.return_value = mock_pyaudio_instance
@@ -107,8 +118,13 @@ class TestAudioStreamer:
             assert result == (None, 0)
 
     @patch('src.audio_streamer.pyaudio.PyAudio')
-    def test_input_callback_when_not_streaming(self, mock_pyaudio):
+    @patch('asyncio.get_event_loop')
+    def test_input_callback_when_not_streaming(self, mock_get_event_loop, mock_pyaudio):
         """Test the input callback when not streaming."""
+        # Mock event loop
+        mock_loop = Mock()
+        mock_get_event_loop.return_value = mock_loop
+        
         # Mock PyAudio
         mock_pyaudio_instance = Mock()
         mock_pyaudio.return_value = mock_pyaudio_instance

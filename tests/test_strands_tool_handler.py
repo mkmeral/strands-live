@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from src.strands_tool_handler import StrandsToolHandler
+from strands_tools import current_time, calculator
 
 
 class TestStrandsToolHandler:
@@ -20,13 +21,15 @@ class TestStrandsToolHandler:
     @pytest.fixture
     def handler(self):
         """Create a StrandsToolHandler instance for testing."""
-        return StrandsToolHandler()
+        return StrandsToolHandler(tools=[current_time, calculator])
     
     def test_initialization(self, handler):
         """Test handler initialization."""
         assert isinstance(handler, StrandsToolHandler)
         assert hasattr(handler, 'registry')
         assert hasattr(handler, 'config')
+        assert hasattr(handler, 'tools')
+        assert len(handler.tools) == 2
     
     def test_get_supported_tools(self, handler):
         """Test getting supported tools."""

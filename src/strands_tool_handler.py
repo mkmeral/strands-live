@@ -10,7 +10,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from strands.tools.registry import ToolRegistry
-from strands_tools import current_time, calculator
 
 from .tool_handler_base import ToolHandlerBase
 
@@ -30,12 +29,14 @@ class StrandsToolHandler(ToolHandlerBase):
     - Supports both sync and async execution contexts
     """
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, tools: Optional[List[Any]] = None, config: Optional[Dict[str, Any]] = None):
         """Initialize the Strands tool handler.
         
         Args:
+            tools: List of Strands tool functions to register.
             config: Optional configuration dictionary.
         """
+        self.tools = tools or []
         super().__init__(config)
     
     def _initialize_handler(self) -> None:
@@ -43,10 +44,13 @@ class StrandsToolHandler(ToolHandlerBase):
         # Initialize Strands ToolRegistry
         self.registry = ToolRegistry()
         
-        # Start with current_time tool as our initial example
-        logger.info("Initializing Strands tool handler with current_time and calculator tools")
-        tool_names = self.registry.process_tools([current_time, calculator])
-        logger.info(f"Registered Strands tools: {tool_names}")
+        # Register provided tools
+        if self.tools:
+            logger.info(f"Initializing Strands tool handler with {len(self.tools)} tools")
+            tool_names = self.registry.process_tools(self.tools)
+            logger.info(f"Registered Strands tools: {tool_names}")
+        else:
+            logger.info("Initialized Strands tool handler with no tools")
     
     def get_supported_tools(self) -> List[str]:
         """Get list of supported tool names.

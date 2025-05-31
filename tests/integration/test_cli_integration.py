@@ -1,7 +1,7 @@
 """
 Integration tests for CLI and tool handler functionality.
 
-These tests verify that the CLI works end-to-end with both Strands and original tools,
+These tests verify that the CLI works end-to-end with Strands tools,
 testing real component interactions without requiring AWS credentials.
 """
 
@@ -10,10 +10,11 @@ import subprocess
 import sys
 import os
 from unittest.mock import patch, Mock, AsyncMock
-from src.cli import main, run_cli
+from src.cli import main, run_cli, get_default_tools
 from src.strands_tool_handler import StrandsToolHandler
 from src.tool_handler import ToolHandler
 from src.speech_agent import SpeechAgent
+from strands_tools import current_time, calculator
 
 
 class TestCLIIntegration:
@@ -29,14 +30,12 @@ class TestCLIIntegration:
         
         assert result.returncode == 0
         assert "--debug" in result.stdout
-        assert "--original-tools" in result.stdout
         assert "Nova Sonic Python Streaming" in result.stdout
 
     @patch('src.cli.SpeechAgent')
     @patch('src.cli.StrandsToolHandler')
-    @patch('src.cli.ToolHandler')
     @pytest.mark.asyncio
-    async def test_main_uses_strands_by_default(self, mock_tool_handler, mock_strands_handler, mock_speech_agent):
+    async def test_main_uses_strands_by_default(self, mock_strands_handler, mock_speech_agent):
         """Test that main() uses StrandsToolHandler by default."""
         # Setup mocks
         mock_strands_instance = Mock()
@@ -48,11 +47,13 @@ class TestCLIIntegration:
         mock_speech_agent.return_value = mock_agent_instance
         
         # Test default behavior
-        await main(debug=False, use_strands=True)
+        await main(debug=False)
         
-        # Verify StrandsToolHandler was used
+        # Verify StrandsToolHandler was used with tools
         mock_strands_handler.assert_called_once()
-        mock_tool_handler.assert_not_called()
+        call_args = mock_strands_handler.call_args
+        assert 'tools' in call_args.kwargs
+        assert len(call_args.kwargs['tools']) == 2  # current_time and calculator
         
         # Verify SpeechAgent was created with Strands handler
         mock_speech_agent.assert_called_once_with(
@@ -63,31 +64,35 @@ class TestCLIIntegration:
 
     @patch('src.cli.SpeechAgent')
     @patch('src.cli.StrandsToolHandler')
-    @patch('src.cli.ToolHandler')
     @pytest.mark.asyncio
-    async def test_main_uses_original_tools_when_requested(self, mock_tool_handler, mock_strands_handler, mock_speech_agent):
-        """Test that main() uses ToolHandler when use_strands=False."""
+    async def test_main_with_custom_tools(self, mock_strands_handler, mock_speech_agent):
+        """Test that main() uses custom tools when provided."""
         # Setup mocks
-        mock_tool_instance = Mock()
-        mock_tool_handler.return_value = mock_tool_instance
+        mock_strands_instance = Mock()
+        mock_strands_handler.return_value = mock_strands_instance
         
         mock_agent_instance = Mock()
         mock_agent_instance.initialize = AsyncMock()
         mock_agent_instance.start_conversation = AsyncMock()
         mock_speech_agent.return_value = mock_agent_instance
         
-        # Test with original tools
-        await main(debug=False, use_strands=False)
+        # Create custom tools
+        custom_tools = [Mock(), Mock(), Mock()]
         
-        # Verify ToolHandler was used
-        mock_tool_handler.assert_called_once()
-        mock_strands_handler.assert_not_called()
+        # Test with custom tools
+        await main(debug=False, tools=custom_tools)
         
-        # Verify SpeechAgent was created with original handler
+        # Verify StrandsToolHandler was used with custom tools
+        mock_strands_handler.assert_called_once()
+        call_args = mock_strands_handler.call_args
+        assert 'tools' in call_args.kwargs
+        assert call_args.kwargs['tools'] == custom_tools
+        
+        # Verify SpeechAgent was created with Strands handler
         mock_speech_agent.assert_called_once_with(
             model_id='amazon.nova-sonic-v1:0',
             region='us-east-1',
-            tool_handler=mock_tool_instance
+            tool_handler=mock_strands_instance
         )
 
 
@@ -95,14 +100,16 @@ class TestToolHandlerIntegration:
     """Integration tests for tool handler functionality."""
 
     def test_strands_tool_handler_initialization(self):
-        """Test that StrandsToolHandler initializes properly."""
-        handler = StrandsToolHandler()
+        """Test that StrandsToolHandler initializes properly with tools."""
+        handler = StrandsToolHandler(tools=[current_time, calculator])
         
         # Verify it has the expected interface
         assert hasattr(handler, 'process_tool_use')
         assert hasattr(handler, 'get_supported_tools')
         assert callable(handler.process_tool_use)
         assert callable(handler.get_supported_tools)
+        assert hasattr(handler, 'tools')
+        assert len(handler.tools) == 2
 
     def test_original_tool_handler_initialization(self):
         """Test that original ToolHandler initializes properly."""
@@ -116,15 +123,16 @@ class TestToolHandlerIntegration:
 
     def test_strands_tool_handler_has_expected_tools(self):
         """Test that StrandsToolHandler provides expected tools."""
-        handler = StrandsToolHandler()
+        handler = StrandsToolHandler(tools=[current_time, calculator])
         tools = handler.get_supported_tools()
         
         # Should be a list of tool names
         assert isinstance(tools, list)
-        assert len(tools) > 0
+        assert len(tools) == 2
         
-        # Should contain current_time tool at minimum
+        # Should contain expected tools
         assert 'current_time' in tools
+        assert 'calculator' in tools
 
     def test_original_tool_handler_has_expected_tools(self):
         """Test that original ToolHandler provides expected tools."""
@@ -142,18 +150,16 @@ class TestToolHandlerIntegration:
     @pytest.mark.asyncio
     async def test_strands_tool_handler_can_handle_tool_use(self):
         """Test that StrandsToolHandler can handle tool use requests."""
-        handler = StrandsToolHandler()
+        handler = StrandsToolHandler(tools=[current_time, calculator])
         
-        # Should not raise exception
-        try:
-            result = await handler.process_tool_use('current_time', {})
-            # Result should be a dictionary with required fields
-            assert isinstance(result, dict)
-            assert 'status' in result
-            assert 'content' in result
-        except Exception as e:
-            # Some tools might not work without proper setup, but the handler should exist
-            assert 'current_time' in str(e) or 'tool' in str(e).lower()
+        # Test with current_time tool
+        result = await handler.process_tool_use('current_time', {'content': '{}'})
+        
+        # Result should be a dictionary with required fields
+        assert isinstance(result, dict)
+        assert 'status' in result
+        assert 'content' in result
+        assert result['status'] == 'success'
 
     @pytest.mark.asyncio
     async def test_original_tool_handler_can_handle_tool_use(self):
@@ -176,7 +182,7 @@ class TestSpeechAgentIntegration:
 
     def test_speech_agent_initialization_with_strands_handler(self):
         """Test SpeechAgent initialization with StrandsToolHandler."""
-        strands_handler = StrandsToolHandler()
+        strands_handler = StrandsToolHandler(tools=[current_time, calculator])
         agent = SpeechAgent(
             model_id='amazon.nova-sonic-v1:0',
             region='us-east-1',
@@ -216,6 +222,14 @@ class TestSpeechAgentIntegration:
 
 class TestEndToEndIntegration:
     """End-to-end integration tests."""
+    
+    def test_get_default_tools_function(self):
+        """Test that get_default_tools returns expected tools."""
+        tools = get_default_tools()
+        assert isinstance(tools, list)
+        assert len(tools) == 2
+        assert current_time in tools
+        assert calculator in tools
 
     @patch.dict(os.environ, {}, clear=True)
     def test_cli_runs_without_aws_credentials(self):
@@ -235,8 +249,6 @@ class TestEndToEndIntegration:
         test_cases = [
             (["--help"], 0),
             (["--debug", "--help"], 0),
-            (["--original-tools", "--help"], 0),
-            (["--debug", "--original-tools", "--help"], 0),
         ]
         
         for args, expected_code in test_cases:
@@ -249,14 +261,11 @@ class TestEndToEndIntegration:
 
     @patch('src.cli.SpeechAgent')
     @patch('src.cli.StrandsToolHandler')
-    @patch('src.cli.ToolHandler')
-    def test_cli_configuration_flow(self, mock_tool_handler, mock_strands_handler, mock_speech_agent):
+    def test_cli_configuration_flow(self, mock_strands_handler, mock_speech_agent):
         """Test the complete CLI configuration flow."""
         # Setup mocks
         mock_strands_instance = Mock()
-        mock_tool_instance = Mock()
         mock_strands_handler.return_value = mock_strands_instance
-        mock_tool_handler.return_value = mock_tool_instance
         
         mock_agent_instance = Mock()
         mock_agent_instance.initialize = AsyncMock()
@@ -265,12 +274,12 @@ class TestEndToEndIntegration:
         
         # Test CLI with different argument combinations
         test_cases = [
-            # (args, expected_use_strands)
-            ([], True),  # Default should use Strands
-            (["--original-tools"], False),  # Should use original tools
+            # (args)
+            ([]),  # Default should use Strands
+            (["--debug"]),  # Should use Strands with debug
         ]
         
-        for args, expected_use_strands in test_cases:
+        for args in test_cases:
             with patch('sys.argv', ['main.py'] + args):
                 try:
                     run_cli()
