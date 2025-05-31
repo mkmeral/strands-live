@@ -3,46 +3,126 @@ import datetime
 import random
 import hashlib
 import pytz
+from typing import Dict, Any, List, Optional
+
+from .tool_handler_base import ToolHandlerBase
 
 
-class ToolHandler:
-    """Handles tool processing and execution for the speech agent."""
-
-    async def process_tool_use(self, tool_name, tool_use_content):
-        """Process tool use requests and return appropriate results."""
-        tool = tool_name.lower()
+class ToolHandler(ToolHandlerBase):
+    """
+    Default implementation of tool handler with date/time and order tracking tools.
+    
+    This handler provides:
+    - Date and time functionality in PST timezone
+    - Order tracking with deterministic fake data
+    - Extensible architecture for adding new tools
+    """
+    
+    def _initialize_handler(self) -> None:
+        """Initialize the default tool handler."""
+        # Set default timezone if not configured
+        if 'timezone' not in self.config:
+            self.config['timezone'] = 'America/Los_Angeles'
         
-        if tool == "getdateandtimetool":
-            return await self._get_date_and_time()
-        elif tool == "trackordertool":
-            return await self._track_order(tool_use_content)
-        else:
-            return {
-                "error": f"Unknown tool: {tool_name}",
-                "toolName": tool_name
-            }
+        # Set default order statuses if not configured
+        if 'order_statuses' not in self.config:
+            self.config['order_statuses'] = [
+                "Order received", 
+                "Processing", 
+                "Preparing for shipment",
+                "Shipped",
+                "In transit", 
+                "Out for delivery",
+                "Delivered",
+                "Delayed"
+            ]
+        
+        # Set default status weights if not configured
+        if 'status_weights' not in self.config:
+            self.config['status_weights'] = [10, 15, 15, 20, 20, 10, 5, 3]
 
-    async def _get_date_and_time(self):
-        """Get current date and time in PST timezone."""
-        # Get current date in PST timezone
-        pst_timezone = pytz.timezone("America/Los_Angeles")
-        pst_date = datetime.datetime.now(pst_timezone)
+    async def process_tool_use(self, tool_name: str, tool_use_content: Dict[str, Any]) -> Dict[str, Any]:
+        """Process tool use request and return the result."""
+        # Validate the request first
+        if not await self.validate_tool_request(tool_name, tool_use_content):
+            return await self.handle_tool_error(tool_name, ValueError("Invalid tool request"))
+        
+        try:
+            tool = tool_name.lower()
+            
+            if tool == "getdateandtimetool":
+                return await self._get_date_and_time()
+            elif tool == "trackordertool":
+                return await self._track_order(tool_use_content)
+            else:
+                return {
+                    "error": f"Unknown tool: {tool_name}",
+                    "toolName": tool_name
+                }
+        except Exception as e:
+            return await self.handle_tool_error(tool_name, e)
+
+    def get_supported_tools(self) -> List[str]:
+        """Get list of supported tools."""
+        return ["getDateAndTimeTool", "trackOrderTool"]
+    
+    def get_tool_schema(self, tool_name: str) -> Optional[Dict[str, Any]]:
+        """Get the schema for a specific tool."""
+        schemas = {
+            "getdateandtimetool": {
+                "name": "getDateAndTimeTool",
+                "description": "Get current date and time in PST timezone",
+                "parameters": {},
+                "returns": {
+                    "formattedTime": "string",
+                    "date": "string", 
+                    "year": "integer",
+                    "month": "integer",
+                    "day": "integer",
+                    "dayOfWeek": "string",
+                    "timezone": "string"
+                }
+            },
+            "trackordertool": {
+                "name": "trackOrderTool",
+                "description": "Track order status with deterministic fake data",
+                "parameters": {
+                    "content": "string (JSON with orderId)",
+                    "requestNotifications": "boolean"
+                },
+                "returns": {
+                    "orderStatus": "string",
+                    "orderNumber": "string",
+                    "estimatedDelivery": "string (optional)",
+                    "deliveredOn": "string (optional)",
+                    "notificationStatus": "string (optional)"
+                }
+            }
+        }
+        
+        return schemas.get(tool_name.lower())
+
+    async def _get_date_and_time(self) -> Dict[str, Any]:
+        """Get current date and time in configured timezone."""
+        timezone_name = self.get_config('timezone', 'America/Los_Angeles')
+        timezone = pytz.timezone(timezone_name)
+        current_time = datetime.datetime.now(timezone)
         
         return {
-            "formattedTime": pst_date.strftime("%I:%M %p"),
-            "date": pst_date.strftime("%Y-%m-%d"),
-            "year": pst_date.year,
-            "month": pst_date.month,
-            "day": pst_date.day,
-            "dayOfWeek": pst_date.strftime("%A").upper(),
-            "timezone": "PST"
+            "formattedTime": current_time.strftime("%I:%M %p"),
+            "date": current_time.strftime("%Y-%m-%d"),
+            "year": current_time.year,
+            "month": current_time.month,
+            "day": current_time.day,
+            "dayOfWeek": current_time.strftime("%A").upper(),
+            "timezone": timezone_name.split('/')[-1]  # Extract timezone abbreviation
         }
 
-    async def _track_order(self, tool_use_content):
+    async def _track_order(self, tool_use_content: Dict[str, Any]) -> Dict[str, Any]:
         """Track order status with deterministic fake data."""
         # Extract order ID from toolUseContent
         content = tool_use_content.get("content", {})
-        content_data = json.loads(content)
+        content_data = json.loads(content) if isinstance(content, str) else content
         order_id = content_data.get("orderId", "")
         request_notifications = tool_use_content.get("requestNotifications", False)
         
@@ -64,19 +144,9 @@ class ToolHandler:
         seed = int(hashlib.md5(order_id.encode(), usedforsecurity=False).hexdigest(), 16) % 10000
         random.seed(seed)
         
-        # Possible statuses with appropriate weights
-        statuses = [
-            "Order received", 
-            "Processing", 
-            "Preparing for shipment",
-            "Shipped",
-            "In transit", 
-            "Out for delivery",
-            "Delivered",
-            "Delayed"
-        ]
-        
-        weights = [10, 15, 15, 20, 20, 10, 5, 3]
+        # Get configured statuses and weights
+        statuses = self.get_config('order_statuses')
+        weights = self.get_config('status_weights')
         
         # Select a status based on the weights
         status = random.choices(statuses, weights=weights, k=1)[0]
@@ -127,3 +197,27 @@ class ToolHandler:
             tracking_info["additionalInfo"] = "Weather delays possible"
             
         return tracking_info
+
+    async def validate_tool_request(self, tool_name: str, tool_use_content: Dict[str, Any]) -> bool:
+        """Validate tool request with additional checks for specific tools."""
+        # First do base validation
+        if not await super().validate_tool_request(tool_name, tool_use_content):
+            return False
+        
+        # Additional validation for specific tools
+        tool = tool_name.lower()
+        
+        if tool == "trackordertool":
+            # Validate that content exists and has required structure
+            content = tool_use_content.get("content")
+            if not content:
+                return False
+            
+            try:
+                content_data = json.loads(content) if isinstance(content, str) else content
+                if not content_data.get("orderId"):
+                    return False
+            except (json.JSONDecodeError, AttributeError):
+                return False
+        
+        return True

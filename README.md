@@ -35,12 +35,19 @@ The application follows a layered architecture with clear separation of concerns
 - Encapsulates AudioStreamer and BedrockStreamManager
 - Provides unified API for external usage
 
-### ToolHandler (`src/tool_handler.py`) - **Tool Processing**
-- Isolated business logic for tool execution
+### ToolHandler (`src/tool_handler.py`) - **Default Tool Implementation**
+- **Default implementation** of ToolHandlerBase
 - Implements date/time and order tracking tools
 - Provides deterministic fake data for demonstration
-- Easy to extend with new tools
+- Configurable timezone and order status settings
 - Clean async interface for tool processing
+
+### ToolHandlerBase (`src/tool_handler_base.py`) - **Tool Handler Abstraction**
+- **Abstract base class** defining the tool handler interface
+- Provides consistent API for all tool implementations
+- Built-in configuration management and validation
+- Error handling and tool schema support
+- Enables multiple tool handler implementations
 
 ### BedrockStreamManager (`src/bedrock_streamer.py`) - **AWS Bedrock Integration**
 - Manages bidirectional streaming with AWS Bedrock Nova Sonic
@@ -113,12 +120,67 @@ await agent.start_conversation()
 ## Features
 
 - **Real-time Audio**: Bidirectional streaming with Nova Sonic
-- **Tool Integration**: Built-in date/time and order tracking tools
+- **Tool Handler Abstraction**: Flexible, extensible tool system
+- **Built-in Tools**: Date/time and order tracking tools
+- **Configuration Management**: Flexible tool configuration system
 - **Barge-in Support**: Interrupt assistant speech with user input
 - **Debug Mode**: Detailed logging for troubleshooting
 - **Clean Architecture**: High-level orchestration with modular components
 - **Async/Await**: Modern Python asynchronous programming
-- **Comprehensive Testing**: Unit tests for all components
+- **Comprehensive Testing**: 101 unit tests for all components
+
+## Tool Handler Abstraction
+
+The system now includes a flexible tool handler abstraction that allows for multiple implementations:
+
+### Creating Custom Tool Handlers
+
+You can create custom tool handlers by extending `ToolHandlerBase`:
+
+```python
+from src.tool_handler_base import ToolHandlerBase
+
+class MyCustomToolHandler(ToolHandlerBase):
+    def _initialize_handler(self):
+        # Set up your handler
+        pass
+        
+    async def process_tool_use(self, tool_name, tool_use_content):
+        # Implement your tools
+        pass
+        
+    def get_supported_tools(self):
+        return ["customTool1", "customTool2"]
+        
+    def get_tool_schema(self, tool_name):
+        # Return tool schema
+        pass
+```
+
+### Tool Handler Features
+
+- **Configuration Management**: Built-in config get/set methods
+- **Validation**: Request validation with custom validation hooks
+- **Error Handling**: Consistent error handling across implementations
+- **Schema Support**: Tool schema definition and retrieval
+- **Polymorphism**: All handlers work through the same interface
+
+### Usage Examples
+
+```python
+# Using default handler
+from src import ToolHandler
+handler = ToolHandler({'timezone': 'UTC'})
+
+# Using custom handler
+handler = MyCustomToolHandler({'custom_config': 'value'})
+
+# Both work the same way
+result = await handler.process_tool_use("toolName", content)
+tools = handler.get_supported_tools()
+```
+
+See `examples/custom_tool_handler.py` for a complete custom implementation example.
 
 ## Available Tools
 
