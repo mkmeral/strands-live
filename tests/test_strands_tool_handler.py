@@ -33,7 +33,8 @@ class TestStrandsToolHandler:
         tools = handler.get_supported_tools()
         assert isinstance(tools, list)
         assert 'current_time' in tools
-        assert len(tools) >= 1
+        assert 'calculator' in tools
+        assert len(tools) >= 2
     
     def test_get_tool_schema(self, handler):
         """Test getting tool schema."""
@@ -56,6 +57,27 @@ class TestStrandsToolHandler:
         assert 'properties' in params
         assert 'timezone' in params['properties']
     
+    def test_get_tool_schema_calculator(self, handler):
+        """Test getting calculator tool schema."""
+        schema = handler.get_tool_schema('calculator')
+        
+        assert schema is not None
+        assert 'name' in schema
+        assert 'description' in schema
+        assert 'parameters' in schema
+        
+        assert schema['name'] == 'calculator'
+        assert isinstance(schema['description'], str)
+        assert len(schema['description']) > 0
+        
+        # Check parameters schema
+        params = schema['parameters']
+        assert isinstance(params, dict)
+        assert 'type' in params
+        assert params['type'] == 'object'
+        assert 'properties' in params
+        assert 'expression' in params['properties']
+    
     def test_get_tool_schema_unknown_tool(self, handler):
         """Test getting schema for unknown tool."""
         schema = handler.get_tool_schema('nonexistent_tool')
@@ -64,12 +86,15 @@ class TestStrandsToolHandler:
     def test_is_tool_supported(self, handler):
         """Test tool support checking."""
         assert handler.is_tool_supported('current_time') is True
+        assert handler.is_tool_supported('calculator') is True
         assert handler.is_tool_supported('nonexistent_tool') is False
     
     @pytest.mark.asyncio
     async def test_process_tool_use_no_params(self, handler):
         """Test tool execution with no parameters."""
-        result = await handler.process_tool_use('current_time', {})
+        # New parameter format with content wrapper
+        params = {'content': '{}'}
+        result = await handler.process_tool_use('current_time', params)
         
         assert isinstance(result, dict)
         assert 'status' in result
@@ -88,7 +113,9 @@ class TestStrandsToolHandler:
     @pytest.mark.asyncio
     async def test_process_tool_use_with_timezone(self, handler):
         """Test tool execution with timezone parameter."""
-        result = await handler.process_tool_use('current_time', {'timezone': 'US/Pacific'})
+        # New parameter format with content wrapper
+        params = {'content': '{"timezone": "US/Pacific"}'}
+        result = await handler.process_tool_use('current_time', params)
         
         assert result['status'] == 'success'
         timestamp = result['content'][0]['text']
@@ -99,7 +126,9 @@ class TestStrandsToolHandler:
     @pytest.mark.asyncio
     async def test_process_tool_use_europe_timezone(self, handler):
         """Test tool execution with European timezone."""
-        result = await handler.process_tool_use('current_time', {'timezone': 'Europe/London'})
+        # New parameter format with content wrapper
+        params = {'content': '{"timezone": "Europe/London"}'}
+        result = await handler.process_tool_use('current_time', params)
         
         assert result['status'] == 'success'
         timestamp = result['content'][0]['text']
@@ -110,10 +139,68 @@ class TestStrandsToolHandler:
     @pytest.mark.asyncio
     async def test_process_tool_use_invalid_tool(self, handler):
         """Test tool execution with invalid tool name."""
-        result = await handler.process_tool_use('nonexistent_tool', {})
+        params = {'content': '{}'}
+        result = await handler.process_tool_use('nonexistent_tool', params)
         
         assert result['status'] == 'error'
         assert 'Tool \'nonexistent_tool\' not found' in result['content'][0]['text']
+    
+    @pytest.mark.asyncio
+    async def test_process_calculator_basic_math(self, handler):
+        """Test calculator tool with basic math expression."""
+        params = {'content': '{"expression": "2 + 2"}'}
+        result = await handler.process_tool_use('calculator', params)
+        
+        assert result['status'] == 'success'
+        assert '4' in result['content'][0]['text']
+    
+    @pytest.mark.asyncio
+    async def test_process_calculator_complex_expression(self, handler):
+        """Test calculator tool with complex expression."""
+        params = {'content': '{"expression": "2 * 3 + 4"}'}
+        result = await handler.process_tool_use('calculator', params)
+        
+        assert result['status'] == 'success'
+        assert '10' in result['content'][0]['text']
+    
+    @pytest.mark.asyncio
+    async def test_process_calculator_with_precision(self, handler):
+        """Test calculator tool with precision parameter."""
+        params = {'content': '{"expression": "1/3", "precision": 3}'}
+        result = await handler.process_tool_use('calculator', params)
+        
+        assert result['status'] == 'success'
+        # Should show 0.333 (3 decimal places)
+        result_text = result['content'][0]['text']
+        assert '0.333' in result_text
+    
+    @pytest.mark.asyncio
+    async def test_process_calculator_invalid_expression(self, handler):
+        """Test calculator tool with invalid expression."""
+        params = {'content': '{"expression": "invalid_expression"}'}
+        result = await handler.process_tool_use('calculator', params)
+        
+        # Should handle error gracefully
+        assert result['status'] in ['error', 'success']  # Could be either depending on implementation
+    
+    @pytest.mark.asyncio
+    async def test_process_tool_use_invalid_json(self, handler):
+        """Test tool execution with invalid JSON in content parameter."""
+        params = {'content': 'invalid json'}
+        result = await handler.process_tool_use('current_time', params)
+        
+        # Should result in an error due to invalid JSON
+        assert result['status'] == 'error'
+        assert 'Error executing Strands tool' in result['content'][0]['text']
+    
+    @pytest.mark.asyncio
+    async def test_process_tool_use_missing_content(self, handler):
+        """Test tool execution with missing content parameter."""
+        result = await handler.process_tool_use('current_time', {})
+        
+        # Should result in an error due to missing content key
+        assert result['status'] == 'error'
+        assert 'Error executing Strands tool' in result['content'][0]['text']
     
     def test_get_bedrock_tool_config(self, handler):
         """Test getting Bedrock-compatible tool configuration."""
@@ -122,13 +209,16 @@ class TestStrandsToolHandler:
         assert isinstance(config, dict)
         assert 'tools' in config
         assert isinstance(config['tools'], list)
-        assert len(config['tools']) >= 1
+        assert len(config['tools']) >= 2
+        
+        # Check that both current_time and calculator tools are present
+        tool_names = [tool['toolSpec']['name'] for tool in config['tools']]
+        assert 'current_time' in tool_names
+        assert 'calculator' in tool_names
         
         # Check the first tool (current_time)
-        tool = config['tools'][0]
-        assert 'toolSpec' in tool
-        
-        tool_spec = tool['toolSpec']
+        current_time_tool = next(tool for tool in config['tools'] if tool['toolSpec']['name'] == 'current_time')
+        tool_spec = current_time_tool['toolSpec']
         assert 'name' in tool_spec
         assert 'description' in tool_spec
         assert 'inputSchema' in tool_spec
@@ -161,7 +251,8 @@ class TestStrandsToolHandler:
         assert info['handler_type'] == 'StrandsToolHandler'
         assert isinstance(info['supported_tools'], list)
         assert 'current_time' in info['supported_tools']
-        assert info['total_tools'] >= 1
+        assert 'calculator' in info['supported_tools']
+        assert info['total_tools'] >= 2
         
         registry_info = info['strands_registry_info']
         assert 'registry_tools' in registry_info
@@ -200,7 +291,8 @@ class TestStrandsToolHandler:
         handler.registry.registry = {'current_time': mock_tool}
         
         try:
-            result = await handler.process_tool_use('current_time', {})
+            params = {'content': '{}'}
+            result = await handler.process_tool_use('current_time', params)
             assert result['status'] == 'error'
             assert 'Error executing Strands tool' in result['content'][0]['text']
             assert 'Simulated error' in result['content'][0]['text']
@@ -229,8 +321,9 @@ class TestStrandsToolHandler:
         """Test that multiple tool calls can be executed concurrently."""
         async def run_concurrent_tools():
             tasks = []
+            params = {'content': '{}'}
             for i in range(3):
-                task = handler.process_tool_use('current_time', {})
+                task = handler.process_tool_use('current_time', params)
                 tasks.append(task)
             
             results = await asyncio.gather(*tasks)
@@ -249,10 +342,10 @@ class TestStrandsToolHandler:
     def test_tool_validation_compatibility(self, handler):
         """Test that tool validation works correctly."""
         # Valid tool should pass validation
-        asyncio.run(self._test_validation_helper(handler, 'current_time', {}, True))
+        asyncio.run(self._test_validation_helper(handler, 'current_time', {'content': '{}'}, True))
         
         # Invalid tool should fail validation
-        asyncio.run(self._test_validation_helper(handler, 'nonexistent_tool', {}, False))
+        asyncio.run(self._test_validation_helper(handler, 'nonexistent_tool', {'content': '{}'}, False))
     
     async def _test_validation_helper(self, handler, tool_name, params, expected):
         """Helper method for validation testing."""

@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from strands.tools.registry import ToolRegistry
-from strands_tools.current_time import current_time
+from strands_tools import current_time, calculator
 
 from .tool_handler_base import ToolHandlerBase
 
@@ -44,8 +44,8 @@ class StrandsToolHandler(ToolHandlerBase):
         self.registry = ToolRegistry()
         
         # Start with current_time tool as our initial example
-        logger.info("Initializing Strands tool handler with current_time tool")
-        tool_names = self.registry.process_tools([current_time])
+        logger.info("Initializing Strands tool handler with current_time and calculator tools")
+        tool_names = self.registry.process_tools([current_time, calculator])
         logger.info(f"Registered Strands tools: {tool_names}")
     
     def get_supported_tools(self) -> List[str]:
@@ -94,7 +94,7 @@ class StrandsToolHandler(ToolHandlerBase):
             Dictionary containing execution result with status and content.
         """
         logger.debug(f"Processing tool use: {tool_name} with parameters: {parameters}")
-        
+        print(f"\nTool Name: {tool_name}\nTool Params: {parameters}\n\n")
         # Get tool from registry
         tool = self.registry.registry.get(tool_name)
         if not tool:
@@ -110,7 +110,7 @@ class StrandsToolHandler(ToolHandlerBase):
             tool_use = {
                 'toolUseId': f'strands_tool_{tool_name}',
                 'name': tool_name,
-                'input': parameters
+                'input': json.loads(parameters['content'])
             }
             
             # Execute tool in thread pool since tool.invoke() is synchronous
