@@ -1,6 +1,27 @@
-repl_state
-slack_events
-**/__pycache__/*
-*.bak
-.pytest_cache
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.coverage
+.pytest_cache/
+
+# Environment
+.env
+.venv
+venv/
+
+# Project specific
+repl_state/
+slack_events/
 *.logs
+*.bak
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

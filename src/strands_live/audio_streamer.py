@@ -1,6 +1,7 @@
 import asyncio
-import pyaudio
 import time
+
+import pyaudio
 
 # Audio configuration
 INPUT_SAMPLE_RATE = 16000
@@ -16,13 +17,14 @@ def time_it(label, methodToRun):
     end_time = time.perf_counter()
     # Import debug_print to avoid circular imports
     from .bedrock_streamer import debug_print
+
     debug_print(f"Execution time for {label}: {end_time - start_time:.4f} seconds")
     return result
 
 
 class AudioStreamer:
     """Handles continuous microphone input and audio output using separate streams."""
-    
+
     def __init__(self, bedrock_stream_manager):
         self.bedrock_stream_manager = bedrock_stream_manager
         self.is_streaming = False
@@ -39,25 +41,31 @@ class AudioStreamer:
         # Initialize separate streams for input and output
         # Input stream with callback for microphone
         debug_print("Opening input audio stream...")
-        self.input_stream = time_it("AudioStreamerOpenAudio", lambda  : self.p.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=INPUT_SAMPLE_RATE,
-            input=True,
-            frames_per_buffer=CHUNK_SIZE,
-            stream_callback=self.input_callback
-        ))
+        self.input_stream = time_it(
+            "AudioStreamerOpenAudio",
+            lambda: self.p.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=INPUT_SAMPLE_RATE,
+                input=True,
+                frames_per_buffer=CHUNK_SIZE,
+                stream_callback=self.input_callback,
+            ),
+        )
         debug_print("input audio stream opened")
 
         # Output stream for direct writing (no callback)
         debug_print("Opening output audio stream...")
-        self.output_stream = time_it("AudioStreamerOpenAudio", lambda  : self.p.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=OUTPUT_SAMPLE_RATE,
-            output=True,
-            frames_per_buffer=CHUNK_SIZE
-        ))
+        self.output_stream = time_it(
+            "AudioStreamerOpenAudio",
+            lambda: self.p.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=OUTPUT_SAMPLE_RATE,
+                output=True,
+                frames_per_buffer=CHUNK_SIZE,
+            ),
+        )
 
         debug_print("output audio stream opened")
 
@@ -66,8 +74,7 @@ class AudioStreamer:
         if self.is_streaming and in_data:
             # Schedule the task in the event loop
             asyncio.run_coroutine_threadsafe(
-                self.process_input_audio(in_data), 
-                self.loop
+                self.process_input_audio(in_data), self.loop
             )
         return (None, pyaudio.paContinue)
 
@@ -79,7 +86,7 @@ class AudioStreamer:
         except Exception as e:
             if self.is_streaming:
                 print(f"Error processing input audio: {e}")
-    
+
     async def play_output_audio(self):
         """Play audio responses from Nova Sonic"""
         while self.is_streaming:
@@ -96,35 +103,36 @@ class AudioStreamer:
                     # Small sleep after clearing
                     await asyncio.sleep(0.05)
                     continue
-                
+
                 # Get audio data from the stream manager's queue
                 audio_data = await asyncio.wait_for(
-                    self.bedrock_stream_manager.audio_output_queue.get(),
-                    timeout=0.1
+                    self.bedrock_stream_manager.audio_output_queue.get(), timeout=0.1
                 )
-                
+
                 if audio_data and self.is_streaming:
                     # Write directly to the output stream in smaller chunks
                     chunk_size = CHUNK_SIZE  # Use the same chunk size as the stream
-                    
+
                     # Write the audio data in chunks to avoid blocking too long
                     for i in range(0, len(audio_data), chunk_size):
                         if not self.is_streaming:
                             break
-                        
+
                         end = min(i + chunk_size, len(audio_data))
                         chunk = audio_data[i:end]
-                        
+
                         # Create a new function that captures the chunk by value
                         def write_chunk(data):
                             return self.output_stream.write(data)
-                        
+
                         # Pass the chunk to the function
-                        await asyncio.get_event_loop().run_in_executor(None, write_chunk, chunk)
-                        
+                        await asyncio.get_event_loop().run_in_executor(
+                            None, write_chunk, chunk
+                        )
+
                         # Brief yield to allow other tasks to run
                         await asyncio.sleep(0.001)
-                    
+
             except asyncio.TimeoutError:
                 # No data available within timeout, just continue
                 continue
@@ -132,51 +140,55 @@ class AudioStreamer:
                 if self.is_streaming:
                     print(f"Error playing output audio: {str(e)}")
                     import traceback
+
                     traceback.print_exc()
                 await asyncio.sleep(0.05)
-    
+
     async def start_streaming(self):
         """Start streaming audio."""
         if self.is_streaming:
             return
-        
+
         # Import time_it_async and debug_print to avoid circular imports
         from .bedrock_streamer import time_it_async
-        
+
         print("Starting audio streaming. Speak into your microphone...")
         print("Press Enter to stop streaming...")
-        
+
         # Send audio content start event
-        await time_it_async("send_audio_content_start_event", lambda : self.bedrock_stream_manager.send_audio_content_start_event())
-        
+        await time_it_async(
+            "send_audio_content_start_event",
+            lambda: self.bedrock_stream_manager.send_audio_content_start_event(),
+        )
+
         self.is_streaming = True
-        
+
         # Start the input stream if not already started
         if not self.input_stream.is_active():
             self.input_stream.start_stream()
-        
+
         # Start processing tasks
-        #self.input_task = asyncio.create_task(self.process_input_audio())
+        # self.input_task = asyncio.create_task(self.process_input_audio())
         self.output_task = asyncio.create_task(self.play_output_audio())
-        
+
         # Wait for user to press Enter to stop
         await asyncio.get_event_loop().run_in_executor(None, input)
-        
+
         # Once input() returns, stop streaming
         await self.stop_streaming()
-    
+
     async def stop_streaming(self):
         """Stop streaming audio."""
         if not self.is_streaming:
             return
-            
+
         self.is_streaming = False
 
         # Cancel the tasks
         tasks = []
-        if hasattr(self, 'input_task') and not self.input_task.done():
+        if hasattr(self, "input_task") and not self.input_task.done():
             tasks.append(self.input_task)
-        if hasattr(self, 'output_task') and not self.output_task.done():
+        if hasattr(self, "output_task") and not self.output_task.done():
             tasks.append(self.output_task)
         for task in tasks:
             task.cancel()
@@ -193,5 +205,5 @@ class AudioStreamer:
             self.output_stream.close()
         if self.p:
             self.p.terminate()
-        
+
         await self.bedrock_stream_manager.close()
