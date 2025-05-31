@@ -80,10 +80,11 @@ class TestToolHandler:
         assert "parameters" in schema
         assert "returns" in schema
         
-        # Check parameter schema
+        # Check parameter schema - now using new format
         params = schema["parameters"]
-        assert "content" in params
-        assert "requestNotifications" in params
+        assert "properties" in params
+        assert "orderId" in params["properties"]
+        assert "requestNotifications" in params["properties"]
 
     def test_get_tool_schema_unknown_tool(self):
         """Test getting schema for unknown tool."""
@@ -350,6 +351,117 @@ class TestToolHandler:
         # Test overriding existing config
         self.tool_handler.set_config("timezone", "UTC")
         assert self.tool_handler.get_config("timezone") == "UTC"
+
+    def test_get_bedrock_tool_config(self):
+        """Test getting Bedrock-compatible tool configuration."""
+        config = self.tool_handler.get_bedrock_tool_config()
+        
+        assert "tools" in config
+        assert len(config["tools"]) == 2
+        
+        # Check first tool structure
+        first_tool = config["tools"][0]
+        assert "toolSpec" in first_tool
+        assert "name" in first_tool["toolSpec"]
+        assert "description" in first_tool["toolSpec"]
+        assert "inputSchema" in first_tool["toolSpec"]
+        assert "json" in first_tool["toolSpec"]["inputSchema"]
+        
+        # Validate JSON schema format
+        import json
+        schema = json.loads(first_tool["toolSpec"]["inputSchema"]["json"])
+        assert schema["type"] == "object"
+        assert "properties" in schema
+        assert "required" in schema
+
+    def test_bedrock_tool_config_contains_correct_tools(self):
+        """Test that Bedrock config contains the correct tools."""
+        config = self.tool_handler.get_bedrock_tool_config()
+        
+        tool_names = [tool["toolSpec"]["name"] for tool in config["tools"]]
+        assert "getDateAndTimeTool" in tool_names
+        assert "trackOrderTool" in tool_names
+
+    def test_bedrock_tool_config_schema_conversion(self):
+        """Test that tool schemas are properly converted to Bedrock format."""
+        config = self.tool_handler.get_bedrock_tool_config()
+        
+        # Find the order tracking tool
+        order_tool = None
+        for tool in config["tools"]:
+            if tool["toolSpec"]["name"] == "trackOrderTool":
+                order_tool = tool
+                break
+        
+        assert order_tool is not None
+        
+        # Check the converted schema
+        import json
+        schema = json.loads(order_tool["toolSpec"]["inputSchema"]["json"])
+        
+        assert "orderId" in schema["properties"]
+        assert "requestNotifications" in schema["properties"]
+        assert "orderId" in schema["required"]
+        assert schema["properties"]["orderId"]["type"] == "string"
+
+    @pytest.mark.asyncio
+    async def test_track_order_new_format(self):
+        """Test order tracking with new direct parameter format."""
+        tool_use_content = {
+            "orderId": "NEW123",
+            "requestNotifications": True
+        }
+        
+        result = await self.tool_handler._track_order(tool_use_content)
+        
+        assert "orderStatus" in result
+        assert "orderNumber" in result
+        assert result["orderNumber"] == "NEW123"
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_track_order_format_compatibility(self):
+        """Test that both old and new formats produce the same result."""
+        order_id = "COMPAT123"
+        
+        # Old format
+        old_format = {
+            "content": json.dumps({"orderId": order_id}),
+            "requestNotifications": False
+        }
+        
+        # New format  
+        new_format = {
+            "orderId": order_id,
+            "requestNotifications": False
+        }
+        
+        result_old = await self.tool_handler._track_order(old_format)
+        result_new = await self.tool_handler._track_order(new_format)
+        
+        # Results should be identical (deterministic)
+        assert result_old["orderStatus"] == result_new["orderStatus"]
+        assert result_old["orderNumber"] == result_new["orderNumber"]
+
+    @pytest.mark.asyncio
+    async def test_validate_tool_request_new_format(self):
+        """Test validation with new direct parameter format."""
+        # Valid new format
+        valid_new_format = {
+            "orderId": "VALID123",
+            "requestNotifications": False
+        }
+        
+        is_valid = await self.tool_handler.validate_tool_request("trackOrderTool", valid_new_format)
+        assert is_valid is True
+        
+        # Invalid new format - missing orderId
+        invalid_new_format = {
+            "requestNotifications": False
+        }
+        
+        is_valid = await self.tool_handler.validate_tool_request("trackOrderTool", invalid_new_format)
+        assert is_valid is False
 
     @pytest.mark.asyncio
     async def test_timezone_configuration_impact(self):

@@ -71,31 +71,46 @@ class ToolHandler(ToolHandlerBase):
         schemas = {
             "getdateandtimetool": {
                 "name": "getDateAndTimeTool",
-                "description": "Get current date and time in PST timezone",
-                "parameters": {},
+                "description": "Get information about the current date and time",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                },
                 "returns": {
-                    "formattedTime": "string",
-                    "date": "string", 
-                    "year": "integer",
-                    "month": "integer",
-                    "day": "integer",
-                    "dayOfWeek": "string",
-                    "timezone": "string"
+                    "formattedTime": "string (formatted time)",
+                    "date": "string (current date)",
+                    "year": "number (current year)",
+                    "month": "number (current month)",
+                    "day": "number (current day)",
+                    "dayOfWeek": "string (day of the week)",
+                    "timezone": "string (timezone abbreviation)"
                 }
             },
             "trackordertool": {
                 "name": "trackOrderTool",
-                "description": "Track order status with deterministic fake data",
+                "description": "Retrieves real-time order tracking information and detailed status updates for customer orders by order ID. Provides estimated delivery dates. Use this tool when customers ask about their order status or delivery timeline.",
                 "parameters": {
-                    "content": "string (JSON with orderId)",
-                    "requestNotifications": "boolean"
+                    "type": "object",
+                    "properties": {
+                        "orderId": {
+                            "type": "string",
+                            "description": "The order number or ID to track"
+                        },
+                        "requestNotifications": {
+                            "type": "boolean",
+                            "description": "Whether to set up notifications for this order",
+                            "default": False
+                        }
+                    },
+                    "required": ["orderId"]
                 },
                 "returns": {
-                    "orderStatus": "string",
-                    "orderNumber": "string",
-                    "estimatedDelivery": "string (optional)",
-                    "deliveredOn": "string (optional)",
-                    "notificationStatus": "string (optional)"
+                    "orderStatus": "string (current status of the order)",
+                    "orderNumber": "string (the order number that was tracked)",
+                    "estimatedDelivery": "string (optional, estimated delivery date)",
+                    "trackingHistory": "array (optional, tracking history)",
+                    "notificationStatus": "string (optional, notification setup status)"
                 }
             }
         }
@@ -120,11 +135,17 @@ class ToolHandler(ToolHandlerBase):
 
     async def _track_order(self, tool_use_content: Dict[str, Any]) -> Dict[str, Any]:
         """Track order status with deterministic fake data."""
-        # Extract order ID from toolUseContent
-        content = tool_use_content.get("content", {})
-        content_data = json.loads(content) if isinstance(content, str) else content
-        order_id = content_data.get("orderId", "")
-        request_notifications = tool_use_content.get("requestNotifications", False)
+        # Extract order ID - handle both old and new formats
+        if "content" in tool_use_content:
+            # Old format - content contains JSON string
+            content = tool_use_content.get("content", {})
+            content_data = json.loads(content) if isinstance(content, str) else content
+            order_id = content_data.get("orderId", "")
+            request_notifications = tool_use_content.get("requestNotifications", False)
+        else:
+            # New format - direct parameters from Bedrock
+            order_id = tool_use_content.get("orderId", "")
+            request_notifications = tool_use_content.get("requestNotifications", False)
         
         # Convert order_id to string if it's an integer
         if isinstance(order_id, int):
@@ -208,16 +229,23 @@ class ToolHandler(ToolHandlerBase):
         tool = tool_name.lower()
         
         if tool == "trackordertool":
-            # Validate that content exists and has required structure
-            content = tool_use_content.get("content")
-            if not content:
-                return False
-            
-            try:
-                content_data = json.loads(content) if isinstance(content, str) else content
-                if not content_data.get("orderId"):
+            # Handle both old and new formats
+            if "content" in tool_use_content:
+                # Old format - validate content structure
+                content = tool_use_content.get("content")
+                if not content:
                     return False
-            except (json.JSONDecodeError, AttributeError):
-                return False
+                
+                try:
+                    content_data = json.loads(content) if isinstance(content, str) else content
+                    if not content_data.get("orderId"):
+                        return False
+                except (json.JSONDecodeError, AttributeError):
+                    return False
+            else:
+                # New format - validate direct parameters
+                order_id = tool_use_content.get("orderId")
+                if not order_id:
+                    return False
         
         return True

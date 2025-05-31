@@ -153,28 +153,13 @@ class BedrockStreamManager:
     
     def start_prompt(self):
         """Create a promptStart event"""
-        get_default_tool_schema = json.dumps({
-            "type": "object",
-            "properties": {},
-            "required": []
-        })
-
-        get_order_tracking_schema = json.dumps({
-            "type": "object",
-            "properties": {
-                "orderId": {
-                    "type": "string",
-                    "description": "The order number or ID to track"
-                },
-                "requestNotifications": {
-                    "type": "boolean",
-                    "description": "Whether to set up notifications for this order",
-                    "default": False
-                }
-            },
-            "required": ["orderId"]
-        })
-
+        # Get tool configuration from tool handler
+        tool_config = {}
+        if self.tool_handler:
+            tool_config = self.tool_handler.get_bedrock_tool_config()
+        else:
+            # Fallback to empty tools if no handler
+            tool_config = {"tools": []}
         
         prompt_start_event = {
             "event": {
@@ -195,28 +180,7 @@ class BedrockStreamManager:
                     "toolUseOutputConfiguration": {
                         "mediaType": "application/json"
                     },
-                    "toolConfiguration": {
-                        "tools": [
-                            {
-                                "toolSpec": {
-                                    "name": "getDateAndTimeTool",
-                                    "description": "get information about the current date and time",
-                                    "inputSchema": {
-                                        "json": get_default_tool_schema
-                                    }
-                                }
-                            },
-                            {
-                                "toolSpec": {
-                                    "name": "trackOrderTool",
-                                    "description": "Retrieves real-time order tracking information and detailed status updates for customer orders by order ID. Provides estimated delivery dates. Use this tool when customers ask about their order status or delivery timeline.",
-                                    "inputSchema": {
-                                    "json": get_order_tracking_schema
-                                    }
-                                }
-                            }
-                        ]
-                    }
+                    "toolConfiguration": tool_config
                 }
             }
         }
