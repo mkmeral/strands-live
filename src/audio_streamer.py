@@ -23,8 +23,8 @@ def time_it(label, methodToRun):
 class AudioStreamer:
     """Handles continuous microphone input and audio output using separate streams."""
     
-    def __init__(self, stream_manager):
-        self.stream_manager = stream_manager
+    def __init__(self, bedrock_stream_manager):
+        self.bedrock_stream_manager = bedrock_stream_manager
         self.is_streaming = False
         self.loop = asyncio.get_event_loop()
 
@@ -75,7 +75,7 @@ class AudioStreamer:
         """Process a single audio chunk directly"""
         try:
             # Send audio to Bedrock immediately
-            self.stream_manager.add_audio_chunk(audio_data)
+            self.bedrock_stream_manager.add_audio_chunk(audio_data)
         except Exception as e:
             if self.is_streaming:
                 print(f"Error processing input audio: {e}")
@@ -85,21 +85,21 @@ class AudioStreamer:
         while self.is_streaming:
             try:
                 # Check for barge-in flag
-                if self.stream_manager.barge_in:
+                if self.bedrock_stream_manager.barge_in:
                     # Clear the audio queue
-                    while not self.stream_manager.audio_output_queue.empty():
+                    while not self.bedrock_stream_manager.audio_output_queue.empty():
                         try:
-                            self.stream_manager.audio_output_queue.get_nowait()
+                            self.bedrock_stream_manager.audio_output_queue.get_nowait()
                         except asyncio.QueueEmpty:
                             break
-                    self.stream_manager.barge_in = False
+                    self.bedrock_stream_manager.barge_in = False
                     # Small sleep after clearing
                     await asyncio.sleep(0.05)
                     continue
                 
                 # Get audio data from the stream manager's queue
                 audio_data = await asyncio.wait_for(
-                    self.stream_manager.audio_output_queue.get(),
+                    self.bedrock_stream_manager.audio_output_queue.get(),
                     timeout=0.1
                 )
                 
@@ -147,7 +147,7 @@ class AudioStreamer:
         print("Press Enter to stop streaming...")
         
         # Send audio content start event
-        await time_it_async("send_audio_content_start_event", lambda : self.stream_manager.send_audio_content_start_event())
+        await time_it_async("send_audio_content_start_event", lambda : self.bedrock_stream_manager.send_audio_content_start_event())
         
         self.is_streaming = True
         
@@ -194,4 +194,4 @@ class AudioStreamer:
         if self.p:
             self.p.terminate()
         
-        await self.stream_manager.close()
+        await self.bedrock_stream_manager.close()

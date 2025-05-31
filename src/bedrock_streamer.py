@@ -11,7 +11,7 @@ from aws_sdk_bedrock_runtime.models import InvokeModelWithBidirectionalStreamInp
 from aws_sdk_bedrock_runtime.config import Config, HTTPAuthSchemeResolver, SigV4AuthScheme
 from smithy_aws_core.credentials_resolvers.environment import EnvironmentCredentialsResolver
 
-from .speech_agent import SpeechAgent
+# Tool handling will be injected from outside
 
 def debug_print(message):
     """Print only if debug mode is enabled"""
@@ -242,10 +242,11 @@ class BedrockStreamManager:
         }
         return json.dumps(tool_result_event)
    
-    def __init__(self, model_id='amazon.nova-sonic-v1:0', region='us-east-1'):
+    def __init__(self, model_id='amazon.nova-sonic-v1:0', region='us-east-1', tool_handler=None):
         """Initialize the stream manager."""
         self.model_id = model_id
         self.region = region
+        self.tool_handler = tool_handler  # Inject tool handler from outside
         
         # Replace RxPy subjects with asyncio queues
         self.audio_input_queue = asyncio.Queue()
@@ -272,9 +273,6 @@ class BedrockStreamManager:
         self.toolUseContent = ""
         self.toolUseId = ""
         self.toolName = ""
-        
-        # Initialize speech agent
-        self.speech_agent = SpeechAgent()
 
     def _initialize_client(self):
         """Initialize the Bedrock client."""
@@ -502,11 +500,14 @@ class BedrockStreamManager:
                                     debug_print(f"Tool use detected: {self.toolName}, ID: {self.toolUseId}")
                                 elif 'contentEnd' in json_data['event'] and json_data['event'].get('contentEnd', {}).get('type') == 'TOOL':
                                     debug_print("Processing tool use and sending result")
-                                    toolResult = await self.speech_agent.process_tool_use(self.toolName, self.toolUseContent)
-                                    toolContent = str(uuid.uuid4())
-                                    await self.send_tool_start_event(toolContent)
-                                    await self.send_tool_result_event(toolContent, toolResult)
-                                    await self.send_tool_content_end_event(toolContent)
+                                    if self.tool_handler:
+                                        toolResult = await self.tool_handler.process_tool_use(self.toolName, self.toolUseContent)
+                                        toolContent = str(uuid.uuid4())
+                                        await self.send_tool_start_event(toolContent)
+                                        await self.send_tool_result_event(toolContent, toolResult)
+                                        await self.send_tool_content_end_event(toolContent)
+                                    else:
+                                        debug_print("No tool handler available")
                                 
                                 elif 'completionEnd' in json_data['event']:
                                     # Handle end of conversation, no more response will be generated

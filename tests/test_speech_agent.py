@@ -1,6 +1,6 @@
 import asyncio
 import pytest
-import json
+from unittest.mock import Mock, AsyncMock, patch
 from src.speech_agent import SpeechAgent
 
 
@@ -9,79 +9,95 @@ class TestSpeechAgent:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.agent = SpeechAgent()
+        with patch('src.speech_agent.AudioStreamer'), \
+             patch('src.speech_agent.BedrockStreamManager'):
+            self.speech_agent = SpeechAgent()
+
+    def test_initialization(self):
+        """Test that SpeechAgent initializes correctly."""
+        with patch('src.speech_agent.AudioStreamer'), \
+             patch('src.speech_agent.BedrockStreamManager'):
+            agent = SpeechAgent(model_id='test-model', region='test-region')
+            
+            assert agent.model_id == 'test-model'
+            assert agent.region == 'test-region'
+            assert agent.tool_handler is not None
+            assert agent.bedrock_stream_manager is not None
+            assert agent.audio_streamer is not None
 
     @pytest.mark.asyncio
-    async def test_get_date_and_time(self):
-        """Test the date and time tool."""
-        result = await self.agent._get_date_and_time()
+    async def test_initialize(self):
+        """Test the initialize method."""
+        # Mock the bedrock stream manager's initialize method
+        self.speech_agent.bedrock_stream_manager.initialize_stream = AsyncMock()
         
-        assert "formattedTime" in result
-        assert "date" in result
-        assert "year" in result
-        assert "month" in result
-        assert "day" in result
-        assert "dayOfWeek" in result
-        assert "timezone" in result
-        assert result["timezone"] == "PST"
+        await self.speech_agent.initialize()
+        
+        # Verify initialize_stream was called
+        self.speech_agent.bedrock_stream_manager.initialize_stream.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_track_order_valid_id(self):
-        """Test order tracking with a valid order ID."""
-        tool_use_content = {
-            "content": json.dumps({"orderId": "12345"}),
-            "requestNotifications": False
-        }
+    async def test_process_tool_use_delegation(self):
+        """Test that process_tool_use is properly delegated to tool_handler."""
+        # Mock the tool handler's process_tool_use method
+        self.speech_agent.tool_handler.process_tool_use = AsyncMock(return_value={"result": "test"})
         
-        result = await self.agent._track_order(tool_use_content)
+        result = await self.speech_agent.process_tool_use("testTool", {"content": "test"})
         
-        assert "orderStatus" in result
-        assert "orderNumber" in result
-        assert result["orderNumber"] == "12345"
-        assert "error" not in result
+        # Verify delegation occurred
+        self.speech_agent.tool_handler.process_tool_use.assert_called_once_with("testTool", {"content": "test"})
+        assert result == {"result": "test"}
 
     @pytest.mark.asyncio
-    async def test_track_order_invalid_id(self):
-        """Test order tracking with an invalid order ID."""
-        tool_use_content = {
-            "content": json.dumps({"orderId": ""}),
-            "requestNotifications": False
-        }
+    async def test_start_conversation(self):
+        """Test the start_conversation method."""
+        # Mock the audio streamer's start_streaming method
+        self.speech_agent.audio_streamer.start_streaming = AsyncMock()
+        self.speech_agent.audio_streamer.stop_streaming = AsyncMock()
         
-        result = await self.agent._track_order(tool_use_content)
+        await self.speech_agent.start_conversation()
         
-        assert "error" in result
-        assert result["error"] == "Invalid order ID format"
+        # Verify start_streaming was called
+        self.speech_agent.audio_streamer.start_streaming.assert_called_once()
+        # Verify stop_streaming was called in finally block
+        self.speech_agent.audio_streamer.stop_streaming.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_tool_use_unknown_tool(self):
-        """Test processing an unknown tool."""
-        result = await self.agent.process_tool_use("unknownTool", {})
+    async def test_stop_conversation(self):
+        """Test the stop_conversation method."""
+        # Mock the audio streamer's stop_streaming method
+        self.speech_agent.audio_streamer.stop_streaming = AsyncMock()
         
-        assert "error" in result
-        assert "Unknown tool: unknownTool" in result["error"]
-        assert result["toolName"] == "unknownTool"
+        await self.speech_agent.stop_conversation()
+        
+        # Verify stop_streaming was called
+        self.speech_agent.audio_streamer.stop_streaming.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_process_tool_use_date_time(self):
-        """Test processing the date and time tool."""
-        result = await self.agent.process_tool_use("getDateAndTimeTool", {})
+    async def test_start_conversation_with_keyboard_interrupt(self):
+        """Test that start_conversation handles KeyboardInterrupt gracefully."""
+        # Mock the audio streamer to raise KeyboardInterrupt
+        self.speech_agent.audio_streamer.start_streaming = AsyncMock(side_effect=KeyboardInterrupt())
+        self.speech_agent.audio_streamer.stop_streaming = AsyncMock()
         
-        assert "formattedTime" in result
-        assert "timezone" in result
-        assert result["timezone"] == "PST"
+        # Should not raise exception
+        await self.speech_agent.start_conversation()
+        
+        # Verify cleanup was called
+        self.speech_agent.audio_streamer.stop_streaming.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_track_order_deterministic(self):
-        """Test that the same order ID always returns the same status."""
-        tool_use_content = {
-            "content": json.dumps({"orderId": "TEST123"}),
-            "requestNotifications": False
-        }
+    async def test_start_conversation_with_exception(self):
+        """Test that start_conversation handles general exceptions gracefully."""
+        # Mock the audio streamer to raise a general exception
+        self.speech_agent.audio_streamer.start_streaming = AsyncMock(side_effect=Exception("Test error"))
+        self.speech_agent.audio_streamer.stop_streaming = AsyncMock()
         
-        result1 = await self.agent._track_order(tool_use_content)
-        result2 = await self.agent._track_order(tool_use_content)
+        # Should handle exception without re-raising
+        try:
+            await self.speech_agent.start_conversation()
+        except Exception:
+            pytest.fail("start_conversation should handle exceptions gracefully")
         
-        # Same order ID should return same status
-        assert result1["orderStatus"] == result2["orderStatus"]
-        assert result1["orderNumber"] == result2["orderNumber"]
+        # Verify cleanup was called
+        self.speech_agent.audio_streamer.stop_streaming.assert_called_once()

@@ -1,8 +1,7 @@
 import asyncio
 import argparse
 import warnings
-from .bedrock_streamer import BedrockStreamManager, time_it_async
-from .audio_streamer import AudioStreamer
+from .speech_agent import SpeechAgent
 
 # Suppress warnings
 warnings.filterwarnings("ignore")
@@ -16,24 +15,23 @@ async def main(debug=False):
     global DEBUG
     DEBUG = debug
 
-    # Create stream manager
-    stream_manager = BedrockStreamManager(model_id='amazon.nova-sonic-v1:0', region='us-east-1')
-
-    # Create audio streamer
-    audio_streamer = AudioStreamer(stream_manager)
-
-    # Initialize the stream
-    await time_it_async("initialize_stream", stream_manager.initialize_stream)
+    # Create speech agent (high-level orchestrator)
+    speech_agent = SpeechAgent(model_id='amazon.nova-sonic-v1:0', region='us-east-1')
 
     try:
-        # This will run until the user presses Enter
-        await audio_streamer.start_streaming()
+        # Initialize the speech agent
+        await speech_agent.initialize()
+        
+        # Start conversation
+        await speech_agent.start_conversation()
         
     except KeyboardInterrupt:
         print("Interrupted by user")
-    finally:
-        # Clean up
-        await audio_streamer.stop_streaming()
+    except Exception as e:
+        print(f"Application error: {e}")
+        if debug:
+            import traceback
+            traceback.print_exc()
 
 
 def run_cli():
