@@ -25,3 +25,4 @@ slack_events/
 
 # OS
 .DS_Store
+**/tasks/**

@@ -5,6 +5,8 @@ import warnings
 # Import Strands tools
 from strands_tools import calculator, current_time
 
+from src.strands_live.tools import use_llm, tasks
+
 from .speech_agent import SpeechAgent
 from .strands_tool_handler import StrandsToolHandler
 
@@ -24,6 +26,8 @@ def get_default_tools():
     return [
         current_time,
         calculator,
+        use_llm,  # AskAgent - specialized agent delegation
+        # tasks,
         # Add more tools here as needed
     ]
 
@@ -48,7 +52,7 @@ async def async_main(debug=False, tools=None):
         tools = get_default_tools()
 
     # Create Strands tool handler with configured tools
-    print(f"🚀 Using Strands Agents SDK with {len(tools)} tools...")
+    print(f"🚀 Using Strands Agents SDK with {len(tools)} tools... {tools}")
     tool_handler = StrandsToolHandler(tools=tools)
 
     # Create speech agent with Strands tool handler

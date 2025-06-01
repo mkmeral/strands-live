@@ -285,8 +285,8 @@ class BedrockStreamManager:
             )
             self.is_active = True
             default_system_prompt = (
-                "You are a friend. The user and you will engage in a spoken dialog exchanging the transcripts of a natural real-time conversation."
-                "When reading order numbers, please read each digit individually, separated by pauses. For example, order #1234 should be read as 'order number one-two-three-four' rather than 'order number one thousand two hundred thirty-four'."
+                "You are a helpful assistant based on Strands Agents. You can access internet, customer's files and AWS account through tools. "
+                "Help user achieve thier goal. Keep the interaction conversational."
             )
 
             # Send initialization events
@@ -535,7 +535,7 @@ class BedrockStreamManager:
                                     ):
                                         print(f"Assistant: {text_content}")
                                     elif self.role == "USER":
-                                        print(f"User: {text_content}")
+                                        print(f"\n----- USER -------\nUser: {text_content}\n\n")
 
                                 elif "audioOutput" in json_data["event"]:
                                     audio_content = json_data["event"]["audioOutput"][
