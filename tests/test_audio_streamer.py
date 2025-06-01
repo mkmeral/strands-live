@@ -27,8 +27,12 @@ class TestAudioStreamer:
         # Mock bedrock stream manager
         mock_bedrock_manager = Mock()
 
-        # Create AudioStreamer
-        audio_streamer = AudioStreamer(mock_bedrock_manager)
+        # Create AudioStreamer with mock agent
+        mock_agent = Mock()
+        mock_agent.prompt_name = "test_prompt"
+        mock_agent.audio_content_name = "test_audio_content"
+        
+        audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
 
         # Verify initialization
         assert audio_streamer.bedrock_stream_manager == mock_bedrock_manager
@@ -51,16 +55,22 @@ class TestAudioStreamer:
         mock_bedrock_manager = Mock()
         mock_bedrock_manager.add_audio_chunk = Mock()
 
-        # Create AudioStreamer
-        audio_streamer = AudioStreamer(mock_bedrock_manager)
+        # Create AudioStreamer with mock agent
+        mock_agent = Mock()
+        mock_agent.prompt_name = "test_prompt"
+        mock_agent.audio_content_name = "test_audio_content"
+        
+        audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
         # Test processing audio data
         test_audio_data = b"test audio data"
         await audio_streamer.process_input_audio(test_audio_data)
 
-        # Verify audio was passed to bedrock manager
-        mock_bedrock_manager.add_audio_chunk.assert_called_once_with(test_audio_data)
+        # Verify audio was passed to bedrock manager with agent identifiers
+        mock_bedrock_manager.add_audio_chunk.assert_called_once_with(
+            test_audio_data, "test_prompt", "test_audio_content"
+        )
 
     @patch("strands_live.audio_streamer.pyaudio.PyAudio")
     @pytest.mark.asyncio
@@ -75,8 +85,12 @@ class TestAudioStreamer:
         mock_bedrock_manager = Mock()
         mock_bedrock_manager.add_audio_chunk = Mock(side_effect=Exception("Test error"))
 
-        # Create AudioStreamer
-        audio_streamer = AudioStreamer(mock_bedrock_manager)
+        # Create AudioStreamer with mock agent
+        mock_agent = Mock()
+        mock_agent.prompt_name = "test_prompt"
+        mock_agent.audio_content_name = "test_audio_content"
+        
+        audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
         # Test processing audio data with error - should not raise exception
@@ -84,7 +98,9 @@ class TestAudioStreamer:
         await audio_streamer.process_input_audio(test_audio_data)
 
         # Verify the method was called despite the error
-        mock_bedrock_manager.add_audio_chunk.assert_called_once_with(test_audio_data)
+        mock_bedrock_manager.add_audio_chunk.assert_called_once_with(
+            test_audio_data, "test_prompt", "test_audio_content"
+        )
 
     @patch("strands_live.audio_streamer.pyaudio.PyAudio")
     @patch("asyncio.get_event_loop")
@@ -102,8 +118,12 @@ class TestAudioStreamer:
         # Mock bedrock stream manager
         mock_bedrock_manager = Mock()
 
-        # Create AudioStreamer
-        audio_streamer = AudioStreamer(mock_bedrock_manager)
+        # Create AudioStreamer with mock agent
+        mock_agent = Mock()
+        mock_agent.prompt_name = "test_prompt"
+        mock_agent.audio_content_name = "test_audio_content"
+        
+        audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
         # Mock asyncio.run_coroutine_threadsafe
@@ -134,8 +154,12 @@ class TestAudioStreamer:
         # Mock bedrock stream manager
         mock_bedrock_manager = Mock()
 
-        # Create AudioStreamer
-        audio_streamer = AudioStreamer(mock_bedrock_manager)
+        # Create AudioStreamer with mock agent
+        mock_agent = Mock()
+        mock_agent.prompt_name = "test_prompt"
+        mock_agent.audio_content_name = "test_audio_content"
+        
+        audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = False  # Not streaming
 
         # Mock asyncio.run_coroutine_threadsafe

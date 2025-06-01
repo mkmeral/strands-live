@@ -33,13 +33,16 @@ class TestSpeechAgent:
     @pytest.mark.asyncio
     async def test_initialize(self):
         """Test the initialize method."""
-        # Mock the bedrock stream manager's initialize method
+        # Mock the bedrock stream manager's methods
         self.speech_agent.bedrock_stream_manager.initialize_stream = AsyncMock()
+        self.speech_agent.bedrock_stream_manager.send_raw_event = AsyncMock()
 
         await self.speech_agent.initialize()
 
         # Verify initialize_stream was called
         self.speech_agent.bedrock_stream_manager.initialize_stream.assert_called_once()
+        # Verify send_raw_event was called for conversation initialization
+        self.speech_agent.bedrock_stream_manager.send_raw_event.assert_called()
 
     @pytest.mark.asyncio
     async def test_process_tool_use_delegation(self):

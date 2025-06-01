@@ -25,8 +25,9 @@ def time_it(label, methodToRun):
 class AudioStreamer:
     """Handles continuous microphone input and audio output using separate streams."""
 
-    def __init__(self, bedrock_stream_manager):
+    def __init__(self, bedrock_stream_manager, agent=None):
         self.bedrock_stream_manager = bedrock_stream_manager
+        self.agent = agent  # Reference to speech agent
         self.is_streaming = False
         self.loop = asyncio.get_event_loop()
 
@@ -81,8 +82,14 @@ class AudioStreamer:
     async def process_input_audio(self, audio_data):
         """Process a single audio chunk directly"""
         try:
-            # Send audio to Bedrock immediately
-            self.bedrock_stream_manager.add_audio_chunk(audio_data)
+            # Send audio to Bedrock immediately with agent identifiers
+            if self.agent:
+                self.bedrock_stream_manager.add_audio_chunk(
+                    audio_data, self.agent.prompt_name, self.agent.audio_content_name
+                )
+            else:
+                # Fallback for backward compatibility
+                self.bedrock_stream_manager.add_audio_chunk(audio_data, "default", "default")
         except Exception as e:
             if self.is_streaming:
                 print(f"Error processing input audio: {e}")
@@ -91,15 +98,15 @@ class AudioStreamer:
         """Play audio responses from Nova Sonic"""
         while self.is_streaming:
             try:
-                # Check for barge-in flag
-                if self.bedrock_stream_manager.barge_in:
+                # Check for barge-in flag from agent
+                if self.agent and self.agent.barge_in:
                     # Clear the audio queue
                     while not self.bedrock_stream_manager.audio_output_queue.empty():
                         try:
                             self.bedrock_stream_manager.audio_output_queue.get_nowait()
                         except asyncio.QueueEmpty:
                             break
-                    self.bedrock_stream_manager.barge_in = False
+                    self.agent.barge_in = False
                     # Small sleep after clearing
                     await asyncio.sleep(0.05)
                     continue
@@ -156,10 +163,21 @@ class AudioStreamer:
         print("Press Enter to stop streaming...")
 
         # Send audio content start event
-        await time_it_async(
-            "send_audio_content_start_event",
-            lambda: self.bedrock_stream_manager.send_audio_content_start_event(),
-        )
+        if self.agent:
+            await time_it_async(
+                "send_audio_content_start_event",
+                lambda: self.bedrock_stream_manager.send_audio_content_start_event(
+                    self.agent.prompt_name, self.agent.audio_content_name
+                ),
+            )
+        else:
+            # Fallback for backward compatibility
+            await time_it_async(
+                "send_audio_content_start_event",
+                lambda: self.bedrock_stream_manager.send_audio_content_start_event(
+                    "default", "default"
+                ),
+            )
 
         self.is_streaming = True
 
@@ -206,4 +224,9 @@ class AudioStreamer:
         if self.p:
             self.p.terminate()
 
-        await self.bedrock_stream_manager.close()
+        if self.agent:
+            await self.bedrock_stream_manager.close(
+                self.agent.prompt_name, self.agent.audio_content_name
+            )
+        else:
+            await self.bedrock_stream_manager.close()

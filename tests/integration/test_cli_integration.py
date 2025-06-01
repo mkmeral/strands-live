@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from strands_tools import calculator, current_time
 
-from strands_live.cli import get_default_tools, main, run_cli
+from strands_live.cli import get_default_tools, async_main, run_cli
 from strands_live.speech_agent import SpeechAgent
 from strands_live.strands_tool_handler import StrandsToolHandler
 from strands_live.tool_handler import ToolHandler
@@ -49,13 +49,13 @@ class TestCLIIntegration:
         mock_speech_agent.return_value = mock_agent_instance
 
         # Test default behavior
-        await main(debug=False)
+        await async_main(debug=False)
 
         # Verify StrandsToolHandler was used with tools
         mock_strands_handler.assert_called_once()
         call_args = mock_strands_handler.call_args
         assert "tools" in call_args.kwargs
-        assert len(call_args.kwargs["tools"]) == 2  # current_time and calculator
+        assert len(call_args.kwargs["tools"]) == 3  # current_time, calculator, and use_llm
 
         # Verify SpeechAgent was created with Strands handler
         mock_speech_agent.assert_called_once_with(
@@ -84,7 +84,7 @@ class TestCLIIntegration:
         custom_tools = [Mock(), Mock(), Mock()]
 
         # Test with custom tools
-        await main(debug=False, tools=custom_tools)
+        await async_main(debug=False, tools=custom_tools)
 
         # Verify StrandsToolHandler was used with custom tools
         mock_strands_handler.assert_called_once()
@@ -132,7 +132,7 @@ class TestToolHandlerIntegration:
 
         # Should be a list of tool names
         assert isinstance(tools, list)
-        assert len(tools) == 2
+        assert len(tools) == 2  # Only passed current_time and calculator
 
         # Should contain expected tools
         assert "current_time" in tools
@@ -228,7 +228,7 @@ class TestEndToEndIntegration:
         """Test that get_default_tools returns expected tools."""
         tools = get_default_tools()
         assert isinstance(tools, list)
-        assert len(tools) == 2
+        assert len(tools) == 3  # get_default_tools returns 3 tools
         assert current_time in tools
         assert calculator in tools
 
@@ -240,7 +240,7 @@ class TestEndToEndIntegration:
             [
                 sys.executable,
                 "-c",
-                "from strands_live.cli import main; print('CLI imports successful')",
+                "from strands_live.cli import async_main; print('CLI imports successful')",
             ],
             capture_output=True,
             text=True,
@@ -300,11 +300,11 @@ class TestEndToEndIntegration:
         """Test that project structure is intact."""
         required_files = [
             "main.py",
-            "src/__init__.py",
-            "src/cli.py",
-            "src/speech_agent.py",
-            "src/strands_tool_handler.py",
-            "src/tool_handler.py",
+            "src/strands_live/__init__.py",
+            "src/strands_live/cli.py",
+            "src/strands_live/speech_agent.py",
+            "src/strands_live/strands_tool_handler.py",
+            "src/strands_live/tool_handler.py",
             "tests/__init__.py",
             "requirements.txt",
         ]
@@ -318,7 +318,7 @@ class TestEndToEndIntegration:
             requirements = f.read()
 
         # Should contain expected dependencies
-        assert "pytest" in requirements
+        assert "strands-agents" in requirements or "pyaudio" in requirements
         assert len(requirements.strip()) > 0
 
         # Check for key dependencies

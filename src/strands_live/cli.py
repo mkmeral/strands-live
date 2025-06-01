@@ -5,7 +5,7 @@ import warnings
 # Import Strands tools
 from strands_tools import calculator, current_time
 
-from src.strands_live.tools import use_llm, tasks
+from .tools import use_llm, tasks
 
 from .speech_agent import SpeechAgent
 from .strands_tool_handler import StrandsToolHandler

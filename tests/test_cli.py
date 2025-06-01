@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from strands_live.cli import get_default_tools, main, run_cli
+from strands_live.cli import get_default_tools, async_main, run_cli
 
 
 class TestCLI:
@@ -25,13 +25,13 @@ class TestCLI:
         mock_speech_agent_class.return_value = mock_speech_agent
 
         # Run main function
-        await main(debug=False)
+        await async_main(debug=False)
 
         # Verify StrandsToolHandler was created with tools
         mock_strands_handler_class.assert_called_once()
         call_args = mock_strands_handler_class.call_args
         assert "tools" in call_args.kwargs
-        assert len(call_args.kwargs["tools"]) == 2  # current_time and calculator
+        assert len(call_args.kwargs["tools"]) == 3  # current_time, calculator, and use_llm
 
         # Verify SpeechAgent was created with Strands handler
         mock_speech_agent_class.assert_called_once_with(
@@ -64,7 +64,7 @@ class TestCLI:
         custom_tools = [Mock(), Mock()]
 
         # Run main function with custom tools
-        await main(debug=False, tools=custom_tools)
+        await async_main(debug=False, tools=custom_tools)
 
         # Verify StrandsToolHandler was created with custom tools
         mock_strands_handler_class.assert_called_once()
@@ -93,7 +93,7 @@ class TestCLI:
         mock_speech_agent_class.return_value = mock_speech_agent
 
         # Run main function with debug
-        await main(debug=True)
+        await async_main(debug=True)
 
         # Verify StrandsToolHandler was created
         mock_strands_handler_class.assert_called_once()
@@ -120,7 +120,7 @@ class TestCLI:
         mock_speech_agent_class.return_value = mock_speech_agent
 
         # Should not raise exception
-        await main(debug=False)
+        await async_main(debug=False)
 
         # Verify methods were called up to the interruption
         mock_speech_agent.initialize.assert_called_once()
@@ -143,7 +143,7 @@ class TestCLI:
         mock_speech_agent_class.return_value = mock_speech_agent
 
         # Should not raise exception
-        await main(debug=False)
+        await async_main(debug=False)
 
         # Verify error was printed
         mock_print.assert_called_with("Application error: Test error")
@@ -170,7 +170,7 @@ class TestCLI:
         mock_speech_agent_class.return_value = mock_speech_agent
 
         # Should not raise exception
-        await main(debug=True)
+        await async_main(debug=True)
 
         # Verify error was printed and traceback was shown
         mock_print.assert_called_with("Application error: Test error")
@@ -180,7 +180,7 @@ class TestCLI:
         """Test that get_default_tools returns the expected tools."""
         tools = get_default_tools()
         assert isinstance(tools, list)
-        assert len(tools) == 2  # current_time and calculator
+        assert len(tools) == 3  # current_time, calculator, and use_llm
 
         # Import the expected tools to compare
         from strands_tools import calculator, current_time
