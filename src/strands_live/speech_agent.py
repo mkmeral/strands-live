@@ -50,6 +50,7 @@ class SpeechAgent:
         self.system_prompt = system_prompt or (
             "You are a helpful assistant based on Strands Agents. You can access internet, customer's files and AWS account through tools. "
             "Help user achieve thier goal. Keep the interaction conversational."
+            "When reading order numbers, please read each digit individually, separated by pauses. For example, order #1234 should be read as 'order number one-two-three-four' rather than 'order number one thousand two hundred thirty-four'."
         )
         self.max_tokens = max_tokens
         self.top_p = top_p
