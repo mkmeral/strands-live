@@ -26,8 +26,8 @@ def get_default_tools():
     return [
         current_time,
         calculator,
-        use_llm,  # AskAgent - specialized agent delegation
-        # tasks,
+        # use_llm,  # AskAgent - specialized agent delegation
+        tasks,
         # Add more tools here as needed
     ]
 
