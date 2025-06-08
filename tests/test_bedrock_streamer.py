@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from strands_live.bedrock_streamer import BedrockStreamManager
@@ -31,17 +29,23 @@ class TestBedrockStreamManager:
         assert manager.model_id == "amazon.nova-sonic-v1:0"
         assert manager.region == "us-east-1"
 
-    @pytest.mark.skip(reason="Method signature changed in refactoring - needs agent prompt_name parameter")
+    @pytest.mark.skip(
+        reason="Method signature changed in refactoring - needs agent prompt_name parameter"
+    )
     def test_start_prompt_event_structure(self):
         """Test that start_prompt generates valid JSON."""
         pass
 
-    @pytest.mark.skip(reason="Method signature changed in refactoring - needs prompt_name parameter")
+    @pytest.mark.skip(
+        reason="Method signature changed in refactoring - needs prompt_name parameter"
+    )
     def test_tool_result_event_with_dict(self):
         """Test tool_result_event with dictionary content."""
         pass
 
-    @pytest.mark.skip(reason="Method signature changed in refactoring - needs prompt_name parameter")
+    @pytest.mark.skip(
+        reason="Method signature changed in refactoring - needs prompt_name parameter"
+    )
     def test_tool_result_event_with_string(self):
         """Test tool_result_event with string content."""
         pass

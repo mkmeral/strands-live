@@ -31,7 +31,7 @@ class TestAudioStreamer:
         mock_agent = Mock()
         mock_agent.prompt_name = "test_prompt"
         mock_agent.audio_content_name = "test_audio_content"
-        
+
         audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
 
         # Verify initialization
@@ -59,7 +59,7 @@ class TestAudioStreamer:
         mock_agent = Mock()
         mock_agent.prompt_name = "test_prompt"
         mock_agent.audio_content_name = "test_audio_content"
-        
+
         audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
@@ -89,7 +89,7 @@ class TestAudioStreamer:
         mock_agent = Mock()
         mock_agent.prompt_name = "test_prompt"
         mock_agent.audio_content_name = "test_audio_content"
-        
+
         audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
@@ -122,7 +122,7 @@ class TestAudioStreamer:
         mock_agent = Mock()
         mock_agent.prompt_name = "test_prompt"
         mock_agent.audio_content_name = "test_audio_content"
-        
+
         audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = True
 
@@ -158,7 +158,7 @@ class TestAudioStreamer:
         mock_agent = Mock()
         mock_agent.prompt_name = "test_prompt"
         mock_agent.audio_content_name = "test_audio_content"
-        
+
         audio_streamer = AudioStreamer(mock_bedrock_manager, agent=mock_agent)
         audio_streamer.is_streaming = False  # Not streaming
 

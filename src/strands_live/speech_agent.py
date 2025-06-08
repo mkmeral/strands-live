@@ -1,8 +1,8 @@
-import asyncio
 import json
 import uuid
+
 from .audio_streamer import AudioStreamer
-from .bedrock_streamer import BedrockStreamManager, time_it_async, debug_print
+from .bedrock_streamer import BedrockStreamManager, debug_print, time_it_async
 from .tool_handler import ToolHandler
 
 
@@ -10,9 +10,9 @@ class SpeechAgent:
     """High-level speech agent that orchestrates audio streaming and bedrock communication."""
 
     def __init__(
-        self, 
-        model_id="amazon.nova-sonic-v1:0", 
-        region="us-east-1", 
+        self,
+        model_id="amazon.nova-sonic-v1:0",
+        region="us-east-1",
         tool_handler=None,
         # Configuration parameters
         system_prompt=None,
@@ -24,7 +24,7 @@ class SpeechAgent:
         sample_size_bits=16,
         channel_count=1,
         audio_encoding="base64",
-        audio_type="SPEECH"
+        audio_type="SPEECH",
     ):
         """Initialize the speech agent with its components.
 
@@ -69,7 +69,7 @@ class SpeechAgent:
         self.display_assistant_text = False
         self.current_role = None
         self.barge_in = False
-        
+
         # Tool execution state
         self.current_tool_use_content = ""
         self.current_tool_use_id = ""
@@ -80,10 +80,10 @@ class SpeechAgent:
 
         # Initialize Bedrock stream manager as transport layer
         self.bedrock_stream_manager = BedrockStreamManager(
-            model_id=model_id, 
-            region=region, 
+            model_id=model_id,
+            region=region,
             tool_handler=self.tool_handler,
-            agent=self  # Pass reference so streamer can call back
+            agent=self,  # Pass reference so streamer can call back
         )
 
         # Initialize audio streamer with agent reference
@@ -94,7 +94,7 @@ class SpeechAgent:
         return {
             "maxTokens": self.max_tokens,
             "topP": self.top_p,
-            "temperature": self.temperature
+            "temperature": self.temperature,
         }
 
     def get_audio_output_config(self):
@@ -120,7 +120,7 @@ class SpeechAgent:
         await time_it_async(
             "initialize_stream", self.bedrock_stream_manager.initialize_stream
         )
-        
+
         # Send initial session setup
         await self._initialize_conversation()
 
@@ -129,12 +129,12 @@ class SpeechAgent:
         # Send session start
         session_start_event = {
             "event": {
-                "sessionStart": {
-                    "inferenceConfiguration": self.get_inference_config()
-                }
+                "sessionStart": {"inferenceConfiguration": self.get_inference_config()}
             }
         }
-        await self.bedrock_stream_manager.send_raw_event(json.dumps(session_start_event))
+        await self.bedrock_stream_manager.send_raw_event(
+            json.dumps(session_start_event)
+        )
 
         # Send prompt start with configurations
         prompt_start_event = {
@@ -164,11 +164,13 @@ class SpeechAgent:
                     "type": "TEXT",
                     "role": "SYSTEM",
                     "interactive": True,
-                    "textInputConfiguration": {"mediaType": "text/plain"}
+                    "textInputConfiguration": {"mediaType": "text/plain"},
                 }
             }
         }
-        await self.bedrock_stream_manager.send_raw_event(json.dumps(system_content_start))
+        await self.bedrock_stream_manager.send_raw_event(
+            json.dumps(system_content_start)
+        )
 
         # System prompt content
         system_content = {
@@ -176,7 +178,7 @@ class SpeechAgent:
                 "textInput": {
                     "promptName": self.prompt_name,
                     "contentName": self.content_name,
-                    "content": self.system_prompt
+                    "content": self.system_prompt,
                 }
             }
         }
@@ -187,7 +189,7 @@ class SpeechAgent:
             "event": {
                 "contentEnd": {
                     "promptName": self.prompt_name,
-                    "contentName": self.content_name
+                    "contentName": self.content_name,
                 }
             }
         }
@@ -217,7 +219,7 @@ class SpeechAgent:
         """Handle content start event."""
         debug_print("Content start detected")
         self.current_role = content_start["role"]
-        
+
         # Check for speculative content
         if "additionalModelFields" in content_start:
             try:
@@ -233,8 +235,8 @@ class SpeechAgent:
     async def _handle_text_output(self, text_output):
         """Handle text output event."""
         text_content = text_output["content"]
-        role = text_output["role"]
-        
+        # role = text_output["role"]  # Currently unused, but may be needed for future features
+
         # Check for barge-in
         if '{ "interrupted" : true }' in text_content:
             debug_print("Barge-in detected. Stopping audio output.")
@@ -250,6 +252,7 @@ class SpeechAgent:
         """Handle audio output event."""
         audio_content = audio_output["content"]
         import base64
+
         audio_bytes = base64.b64decode(audio_content)
         await self.bedrock_stream_manager.audio_output_queue.put(audio_bytes)
 
@@ -258,7 +261,9 @@ class SpeechAgent:
         self.current_tool_use_content = tool_use
         self.current_tool_name = tool_use["toolName"]
         self.current_tool_use_id = tool_use["toolUseId"]
-        debug_print(f"Tool use detected: {self.current_tool_name}, ID: {self.current_tool_use_id}")
+        debug_print(
+            f"Tool use detected: {self.current_tool_name}, ID: {self.current_tool_use_id}"
+        )
 
     async def _handle_content_end(self, content_end):
         """Handle content end event."""
@@ -277,12 +282,14 @@ class SpeechAgent:
                 self.current_tool_name, self.current_tool_use_content
             )
             tool_content_name = str(uuid.uuid4())
-            
+
             # Send tool result through the stream manager
             await self.bedrock_stream_manager.send_tool_start_event(
                 tool_content_name, self.current_tool_use_id, self.prompt_name
             )
-            await self.bedrock_stream_manager.send_tool_result_event(tool_content_name, tool_result, self.prompt_name)
+            await self.bedrock_stream_manager.send_tool_result_event(
+                tool_content_name, tool_result, self.prompt_name
+            )
             await self.bedrock_stream_manager.send_tool_content_end_event(
                 tool_content_name, self.prompt_name
             )

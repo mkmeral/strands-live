@@ -4,7 +4,6 @@ import datetime
 import inspect
 import json
 import time
-import uuid
 
 from aws_sdk_bedrock_runtime.client import (
     BedrockRuntimeClient,
@@ -136,7 +135,11 @@ class BedrockStreamManager:
         return json.dumps(tool_result_event)
 
     def __init__(
-        self, model_id="amazon.nova-sonic-v1:0", region="us-east-1", tool_handler=None, agent=None
+        self,
+        model_id="amazon.nova-sonic-v1:0",
+        region="us-east-1",
+        tool_handler=None,
+        agent=None,
     ):
         """Initialize the stream manager."""
         self.model_id = model_id
@@ -178,7 +181,7 @@ class BedrockStreamManager:
         try:
             # Clean up any existing stream first
             await self._cleanup_stream()
-            
+
             self.stream_response = await time_it_async(
                 "invoke_model_with_bidirectional_stream",
                 lambda: self.bedrock_client.invoke_model_with_bidirectional_stream(
@@ -210,30 +213,30 @@ class BedrockStreamManager:
     async def _cleanup_stream(self):
         """Clean up existing stream resources."""
         self.is_active = False
-        
+
         # Cancel existing tasks
         tasks_to_cancel = []
         if self.response_task and not self.response_task.done():
             tasks_to_cancel.append(self.response_task)
         if self.audio_input_task and not self.audio_input_task.done():
             tasks_to_cancel.append(self.audio_input_task)
-        
+
         for task in tasks_to_cancel:
             task.cancel()
-            
+
         if tasks_to_cancel:
             try:
                 await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
             except Exception:
                 pass  # Ignore cancellation errors
-        
+
         # Close existing stream
         if self.stream_response and not self.is_stream_closed:
             try:
                 await self.stream_response.input_stream.close()
             except Exception:
                 pass  # Ignore close errors on already closed stream
-                
+
         self.stream_response = None
         self.response_task = None
         self.audio_input_task = None
@@ -244,7 +247,7 @@ class BedrockStreamManager:
         if self.is_stream_closed:
             debug_print("Stream is closed, not attempting to reinitialize")
             return False
-            
+
         if not self.is_active or not self.stream_response:
             debug_print("Stream not active, attempting to reinitialize...")
             try:
@@ -263,7 +266,7 @@ class BedrockStreamManager:
         if self.is_stream_closed:
             debug_print("Cannot send event - stream is closed")
             return
-            
+
         # Ensure stream is active before sending
         if not await self.ensure_stream_active():
             debug_print("Cannot send event - stream initialization failed")
@@ -287,21 +290,25 @@ class BedrockStreamManager:
         except Exception as e:
             error_str = str(e)
             debug_print(f"Error sending event: {error_str}")
-            
+
             # Check for specific stream closure errors
-            if ("Stream is completed" in error_str or 
-                "doesn't support further writes" in error_str or
-                "connection was closed" in error_str.lower()):
+            if (
+                "Stream is completed" in error_str
+                or "doesn't support further writes" in error_str
+                or "connection was closed" in error_str.lower()
+            ):
                 debug_print("Stream appears to be closed by remote")
                 self.is_stream_closed = True
                 self.is_active = False
             else:
                 # For other errors, just mark as inactive but allow retry
                 self.is_active = False
-            
+
             from .cli import DEBUG
+
             if DEBUG:
                 import traceback
+
                 traceback.print_exc()
 
     async def send_audio_content_start_event(self, prompt_name, audio_content_name):
@@ -331,7 +338,7 @@ class BedrockStreamManager:
         """Process audio input from the queue and send to Bedrock."""
         consecutive_errors = 0
         max_consecutive_errors = 10
-        
+
         while self.is_active:
             try:
                 # Get audio data from the queue with timeout
@@ -340,25 +347,25 @@ class BedrockStreamManager:
                 audio_bytes = data.get("audio_bytes")
                 prompt_name = data.get("prompt_name")
                 content_name = data.get("content_name")
-                
+
                 if not audio_bytes:
                     debug_print("No audio bytes received")
                     continue
-                
+
                 # Validate audio data
                 if not isinstance(audio_bytes, bytes):
                     debug_print(f"Invalid audio data type: {type(audio_bytes)}")
                     continue
-                    
+
                 if len(audio_bytes) == 0:
                     debug_print("Empty audio bytes received")
                     continue
-                    
+
                 # Check for reasonable audio data size (not too small, not too large)
                 if len(audio_bytes) < 10:
                     debug_print(f"Audio chunk too small: {len(audio_bytes)} bytes")
                     continue
-                    
+
                 if len(audio_bytes) > 100000:  # 100KB seems reasonable for a chunk
                     debug_print(f"Audio chunk very large: {len(audio_bytes)} bytes")
                     # Still process but log it
@@ -374,18 +381,22 @@ class BedrockStreamManager:
 
                     # Send the event
                     await self.send_raw_event(audio_event)
-                    
+
                     # Reset error counter on successful processing
                     consecutive_errors = 0
-                    
+
                 except Exception as e:
                     consecutive_errors += 1
-                    debug_print(f"Error processing audio chunk (attempt {consecutive_errors}): {e}")
-                    
+                    debug_print(
+                        f"Error processing audio chunk (attempt {consecutive_errors}): {e}"
+                    )
+
                     if consecutive_errors >= max_consecutive_errors:
-                        print(f"Too many consecutive audio processing errors ({consecutive_errors}), stopping audio input")
+                        print(
+                            f"Too many consecutive audio processing errors ({consecutive_errors}), stopping audio input"
+                        )
                         break
-                        
+
                     # Small delay before continuing
                     await asyncio.sleep(0.1)
 
@@ -397,14 +408,18 @@ class BedrockStreamManager:
                 break
             except Exception as e:
                 consecutive_errors += 1
-                debug_print(f"Error in audio input processing (attempt {consecutive_errors}): {e}")
-                
+                debug_print(
+                    f"Error in audio input processing (attempt {consecutive_errors}): {e}"
+                )
+
                 if consecutive_errors >= max_consecutive_errors:
-                    print(f"Too many consecutive audio input errors ({consecutive_errors}), stopping audio input")
+                    print(
+                        f"Too many consecutive audio input errors ({consecutive_errors}), stopping audio input"
+                    )
                     break
-                    
+
                 await asyncio.sleep(0.1)
-                
+
         debug_print("Audio input processing stopped")
 
     def add_audio_chunk(self, audio_bytes, prompt_name, content_name):
@@ -444,7 +459,10 @@ class BedrockStreamManager:
         """Send a tool content event to the Bedrock stream."""
         # Use the actual tool result from processToolUse
         tool_result_event = self.tool_result_event(
-            content_name=content_name, content=tool_result, role="TOOL", prompt_name=prompt_name
+            content_name=content_name,
+            content=tool_result,
+            role="TOOL",
+            prompt_name=prompt_name,
         )
         debug_print(f"Sending tool result event: {tool_result_event}")
         await self.send_raw_event(tool_result_event)
@@ -482,13 +500,13 @@ class BedrockStreamManager:
         """Process incoming responses from Bedrock."""
         consecutive_errors = 0
         max_consecutive_errors = 5
-        
+
         try:
             while self.is_active:
                 try:
                     output = await self.stream_response.await_output()
                     result = await output[1].receive()
-                    
+
                     if result.value and result.value.bytes_:
                         try:
                             response_data = result.value.bytes_.decode("utf-8")
@@ -503,83 +521,109 @@ class BedrockStreamManager:
 
                             # Put the response in the output queue for other components
                             await self.output_queue.put(json_data)
-                            
+
                         except (json.JSONDecodeError, UnicodeDecodeError) as e:
                             consecutive_errors += 1
-                            debug_print(f"Error decoding response data (attempt {consecutive_errors}): {e}")
-                            
+                            debug_print(
+                                f"Error decoding response data (attempt {consecutive_errors}): {e}"
+                            )
+
                             # Try to handle as raw bytes
                             try:
                                 raw_data = result.value.bytes_
                                 debug_print(f"Raw data length: {len(raw_data)} bytes")
-                                await self.output_queue.put({"error": "decode_error", "raw_data_length": len(raw_data)})
+                                await self.output_queue.put(
+                                    {
+                                        "error": "decode_error",
+                                        "raw_data_length": len(raw_data),
+                                    }
+                                )
                             except Exception as raw_e:
                                 debug_print(f"Error handling raw data: {raw_e}")
-                            
+
                             # If too many consecutive errors, break the loop
                             if consecutive_errors >= max_consecutive_errors:
-                                print(f"Too many consecutive decode errors ({consecutive_errors}), stopping response processing")
+                                print(
+                                    f"Too many consecutive decode errors ({consecutive_errors}), stopping response processing"
+                                )
                                 break
-                                
+
                             # Small delay before continuing
                             await asyncio.sleep(0.1)
                             continue
-                            
+
                     else:
                         # Empty or malformed result
                         consecutive_errors += 1
-                        debug_print(f"Empty or malformed result received (attempt {consecutive_errors})")
-                        
+                        debug_print(
+                            f"Empty or malformed result received (attempt {consecutive_errors})"
+                        )
+
                         if consecutive_errors >= max_consecutive_errors:
-                            print(f"Too many consecutive empty results ({consecutive_errors}), stopping response processing")
+                            print(
+                                f"Too many consecutive empty results ({consecutive_errors}), stopping response processing"
+                            )
                             break
-                            
+
                         await asyncio.sleep(0.1)
                         continue
-                        
+
                 except StopAsyncIteration:
                     # Stream has ended normally
                     debug_print("Stream ended normally")
                     self.is_stream_closed = True
                     break
-                    
+
                 except Exception as e:
                     consecutive_errors += 1
                     error_str = str(e)
-                    
+
                     # Check for stream closure indicators
-                    if ("Stream is completed" in error_str or 
-                        "doesn't support further writes" in error_str or
-                        "connection was closed" in error_str.lower() or
-                        "Invalid event bytes" in error_str):
+                    if (
+                        "Stream is completed" in error_str
+                        or "doesn't support further writes" in error_str
+                        or "connection was closed" in error_str.lower()
+                        or "Invalid event bytes" in error_str
+                    ):
                         debug_print(f"Stream appears to be closed: {error_str}")
                         self.is_stream_closed = True
                         self.is_active = False
                         break
-                    
+
                     # Handle specific error types
                     if "ValidationException" in error_str:
                         print(f"Validation error: {error_str}")
                     elif "Invalid event bytes" in error_str:
-                        print(f"Invalid event bytes error (attempt {consecutive_errors}): {error_str}")
-                        debug_print("This might be due to corrupted audio data or network issues")
+                        print(
+                            f"Invalid event bytes error (attempt {consecutive_errors}): {error_str}"
+                        )
+                        debug_print(
+                            "This might be due to corrupted audio data or network issues"
+                        )
                     else:
-                        print(f"Error receiving response (attempt {consecutive_errors}): {error_str}")
-                    
+                        print(
+                            f"Error receiving response (attempt {consecutive_errors}): {error_str}"
+                        )
+
                     # If too many consecutive errors, break the loop
                     if consecutive_errors >= max_consecutive_errors:
-                        print(f"Too many consecutive errors ({consecutive_errors}), stopping response processing")
+                        print(
+                            f"Too many consecutive errors ({consecutive_errors}), stopping response processing"
+                        )
                         self.is_stream_closed = True
                         break
-                        
+
                     # Exponential backoff for retries
-                    retry_delay = min(0.1 * (2 ** consecutive_errors), 2.0)  # Max 2 second delay
+                    retry_delay = min(
+                        0.1 * (2**consecutive_errors), 2.0
+                    )  # Max 2 second delay
                     debug_print(f"Waiting {retry_delay:.2f}s before retry...")
                     await asyncio.sleep(retry_delay)
 
         except Exception as e:
             print(f"Fatal response processing error: {e}")
             import traceback
+
             traceback.print_exc()
         finally:
             self.is_active = False
@@ -593,14 +637,16 @@ class BedrockStreamManager:
 
         debug_print("Closing stream...")
         self.is_active = False
-        
+
         # Send closing events if stream is still active
         if not self.is_stream_closed and self.stream_response:
             try:
                 if prompt_name and audio_content_name:
-                    await self.send_audio_content_end_event(prompt_name, audio_content_name)
+                    await self.send_audio_content_end_event(
+                        prompt_name, audio_content_name
+                    )
                     await self.send_prompt_end_event(prompt_name)
-                
+
                 await self.send_session_end_event()
             except Exception as e:
                 debug_print(f"Error sending closing events: {e}")

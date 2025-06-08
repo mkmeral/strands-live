@@ -52,7 +52,6 @@ all_tasks = agent.tool.tasks(
 
 import json
 import logging
-import os
 import queue
 import threading
 import time
@@ -60,11 +59,16 @@ import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from strands import Agent
 from strands.telemetry.metrics import metrics_to_string
 from strands.types.tools import ToolResult, ToolUse
+
+# Import utilities from strands_agents_builder
+from strands_agents_builder.handlers.callback_handler import callback_handler
+from strands_agents_builder.utils import model_utils
+from strands_agents_builder.utils.kb_utils import load_system_prompt
 
 # Strands tools
 from strands_tools import (
@@ -96,11 +100,6 @@ from strands_tools import (
     use_llm,
     workflow,
 )
-
-# Import utilities from strands_agents_builder
-from strands_agents_builder.handlers.callback_handler import callback_handler
-from strands_agents_builder.utils import model_utils
-from strands_agents_builder.utils.kb_utils import load_system_prompt
 
 # Custom tools
 from tools import (
@@ -208,16 +207,16 @@ task_message_queues = {}  # Message queues for running tasks
 
 def create_task_agent(system_prompt: str = None) -> Agent:
     """Create a new agent for task execution using the same pattern as strands.py"""
-    
+
     # Use default model configuration (same as strands.py default)
     model_path = model_utils.load_path("bedrock")  # Get path to bedrock model
     model_config = model_utils.load_config("{}")  # Load default config
     model = model_utils.load_model(model_path, model_config)
-    
+
     # Load system prompt (same as strands.py)
     if system_prompt is None:
         system_prompt = load_system_prompt()
-    
+
     # Create agent with same configuration as strands.py
     agent = Agent(
         model=model,
@@ -225,14 +224,21 @@ def create_task_agent(system_prompt: str = None) -> Agent:
         system_prompt=system_prompt,
         callback_handler=callback_handler,
     )
-    
+
     return agent
 
 
 class TaskState:
     """Class to track and manage task state."""
 
-    def __init__(self, task_id: str, prompt: str, system_prompt: str, tools: List[str] = None, timeout: int = 900):
+    def __init__(
+        self,
+        task_id: str,
+        prompt: str,
+        system_prompt: str,
+        tools: list[str] = None,
+        timeout: int = 900,
+    ):
         self.task_id = task_id
         self.state_path = TASKS_DIR / f"{task_id}_state.json"
         self.result_path = TASKS_DIR / f"{task_id}_result.txt"
@@ -244,7 +250,7 @@ class TaskState:
         self.system_prompt = system_prompt
         self.tools = tools or []
         # Create string representation of tools for JSON serialization
-        self.tools_str = [getattr(tool, '__name__', str(tool)) for tool in self.tools]
+        self.tools_str = [getattr(tool, "__name__", str(tool)) for tool in self.tools]
         self.timeout = timeout
         self.paused = False
         self.message_history = [{"role": "user", "content": [{"text": prompt}]}]
@@ -317,11 +323,13 @@ class TaskState:
             task_message_queues[self.task_id].put(message)
             logger.debug(f"Added message to queue for task {self.task_id}")
 
-    def update_message_history(self, messages: List[dict]):
+    def update_message_history(self, messages: list[dict]):
         """Update the complete message history and save it."""
         self.message_history = messages.copy()
         self.save_messages()
-        logger.debug(f"Updated message history for task {self.task_id} with {len(messages)} messages")
+        logger.debug(
+            f"Updated message history for task {self.task_id} with {len(messages)} messages"
+        )
 
     @classmethod
     def load(cls, task_id: str):
@@ -333,7 +341,7 @@ class TaskState:
             return None
 
         try:
-            with open(state_path, "r") as f:
+            with open(state_path) as f:
                 state_data = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
             logger.error(f"Failed to load task state for {task_id}: {e}")
@@ -356,14 +364,14 @@ class TaskState:
 
             if messages_path.exists():
                 try:
-                    with open(messages_path, "r") as f:
+                    with open(messages_path) as f:
                         task_state.message_history = json.load(f)
                 except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
                     logger.error(f"Failed to load messages for {task_id}: {e}")
                     # Continue with default message history if messages file is corrupted
 
             return task_state
-            
+
         except (KeyError, TypeError) as e:
             logger.error(f"Invalid task state data for {task_id}: {e}")
             logger.error(f"State data: {state_data}")
@@ -377,7 +385,9 @@ def run_task(task_state: TaskState):
     try:
         # Check if task is paused
         if task_state.paused:
-            task_state.append_result("Task is paused. Resume it to continue processing.")
+            task_state.append_result(
+                "Task is paused. Resume it to continue processing."
+            )
             return
 
         # Update task status
@@ -394,7 +404,10 @@ def run_task(task_state: TaskState):
         task_agents[task_state.task_id] = agent
 
         # Process initial message if needed (only if this is a fresh start)
-        if len(task_state.message_history) == 1 and task_state.message_history[0]["role"] == "user":
+        if (
+            len(task_state.message_history) == 1
+            and task_state.message_history[0]["role"] == "user"
+        ):
             user_message = task_state.message_history[0]["content"][0]["text"]
             logger.debug(f"Processing initial message for task {task_state.task_id}")
 
@@ -404,7 +417,9 @@ def run_task(task_state: TaskState):
             task_state.update_message_history(agent.messages)
 
             # Append summary to result file
-            task_state.append_result(f"Processed initial message. Agent response: {str(result)}")
+            task_state.append_result(
+                f"Processed initial message. Agent response: {str(result)}"
+            )
 
             # Save metrics if available
             if result.metrics:
@@ -421,7 +436,9 @@ def run_task(task_state: TaskState):
             try:
                 # Check for new messages in queue (timeout after 2 seconds)
                 new_message = task_state.message_queue.get(timeout=2.0)
-                logger.debug(f"Processing queued message for task {task_state.task_id}: {new_message[:100]}...")
+                logger.debug(
+                    f"Processing queued message for task {task_state.task_id}: {new_message[:100]}..."
+                )
 
                 # Reset empty counter when we get a message
                 empty_checks = 0
@@ -433,7 +450,9 @@ def run_task(task_state: TaskState):
                 task_state.update_message_history(agent.messages)
 
                 # Append result summary
-                task_state.append_result(f"Processed queued message. Agent response: {str(result)}")
+                task_state.append_result(
+                    f"Processed queued message. Agent response: {str(result)}"
+                )
 
                 # Save metrics if available
                 if result.metrics:
@@ -460,7 +479,9 @@ def run_task(task_state: TaskState):
 
                 continue
             except Exception as e:
-                logger.error(f"Error processing queued message for task {task_state.task_id}: {e}")
+                logger.error(
+                    f"Error processing queued message for task {task_state.task_id}: {e}"
+                )
                 task_state.append_result(f"ERROR processing queued message: {str(e)}")
                 # Mark queue task as done even on error
                 try:
@@ -476,9 +497,13 @@ def run_task(task_state: TaskState):
         task_state.append_result(f"Task completed in {elapsed_time:.2f} seconds")
 
     except TimeoutError:
-        logger.error(f"Task {task_state.task_id} timed out after {task_state.timeout} seconds")
+        logger.error(
+            f"Task {task_state.task_id} timed out after {task_state.timeout} seconds"
+        )
         task_state.update_status("timeout")
-        task_state.append_result(f"ERROR: Task timed out after {task_state.timeout} seconds")
+        task_state.append_result(
+            f"ERROR: Task timed out after {task_state.timeout} seconds"
+        )
 
     except Exception as e:
         # Get the full stack trace
@@ -495,7 +520,9 @@ def run_task_with_timeout(task_state: TaskState):
         # This will be called if the task exceeds its timeout
         if task_id in task_threads and task_state.status == "running":
             task_state.update_status("timeout")
-            task_state.append_result(f"ERROR: Task timed out after {task_state.timeout} seconds")
+            task_state.append_result(
+                f"ERROR: Task timed out after {task_state.timeout} seconds"
+            )
 
     task_id = task_state.task_id
 
@@ -560,7 +587,11 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": f"Error: Task with ID '{task_id}' already exists and is running"}],
+                "content": [
+                    {
+                        "text": f"Error: Task with ID '{task_id}' already exists and is running"
+                    }
+                ],
             }
 
         # Create task state
@@ -572,7 +603,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             task_state.timeout = tool_input.get("timeout")
 
         # Start task in a new thread
-        thread = threading.Thread(target=run_task_with_timeout, args=(task_state,), name=f"task-{task_id}")
+        thread = threading.Thread(
+            target=run_task_with_timeout, args=(task_state,), name=f"task-{task_id}"
+        )
         thread.daemon = True
         thread.start()
 
@@ -634,12 +667,16 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             all_task_ids.add(task_id)
 
         if not all_task_ids:
-            return {"toolUseId": tool_use_id, "status": "success", "content": [{"text": "No tasks found"}]}
+            return {
+                "toolUseId": tool_use_id,
+                "status": "success",
+                "content": [{"text": "No tasks found"}],
+            }
 
         # Build task list with status
         tasks_info = []
         corrupted_tasks = []
-        
+
         for tid in sorted(all_task_ids):
             # Get task state
             state = task_states.get(tid)
@@ -653,21 +690,27 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             is_running = tid in task_threads and task_threads[tid].is_alive()
             running_status = "Running" if is_running else "Not running"
 
-            tasks_info.append(f"Task '{tid}': Status={state.status}, {running_status}, Created={state.created_at}")
+            tasks_info.append(
+                f"Task '{tid}': Status={state.status}, {running_status}, Created={state.created_at}"
+            )
 
         # Prepare response content
         response_content = []
         if tasks_info:
-            response_content.extend([
-                {"text": f"Found {len(tasks_info)} tasks:"},
-                {"text": "\n".join(tasks_info)}
-            ])
-        
+            response_content.extend(
+                [
+                    {"text": f"Found {len(tasks_info)} tasks:"},
+                    {"text": "\n".join(tasks_info)},
+                ]
+            )
+
         if corrupted_tasks:
-            response_content.append({
-                "text": f"Warning: Found {len(corrupted_tasks)} corrupted task files that could not be loaded: {', '.join(corrupted_tasks)}"
-            })
-            
+            response_content.append(
+                {
+                    "text": f"Warning: Found {len(corrupted_tasks)} corrupted task files that could not be loaded: {', '.join(corrupted_tasks)}"
+                }
+            )
+
         if not tasks_info and not corrupted_tasks:
             response_content = [{"text": "No tasks found"}]
 
@@ -682,7 +725,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": "Error: task_id is required for add_message action"}],
+                "content": [
+                    {"text": "Error: task_id is required for add_message action"}
+                ],
             }
 
         message = tool_input.get("message")
@@ -690,7 +735,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": "Error: message is required for add_message action"}],
+                "content": [
+                    {"text": "Error: message is required for add_message action"}
+                ],
             }
 
         # Try to get task state from memory or load from filesystem
@@ -715,7 +762,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 "toolUseId": tool_use_id,
                 "status": "success",
                 "content": [
-                    {"text": f"Message queued for processing in running task '{task_id}'"},
+                    {
+                        "text": f"Message queued for processing in running task '{task_id}'"
+                    },
                     {"text": f"Queue message: {message[:100]}..."},
                     {"text": "The task will process this message in its event loop"},
                 ],
@@ -723,11 +772,15 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
         else:
             # Task is not running - add message to history and start task
             # Add the message to the message history (append to existing history)
-            task_state.message_history.append({"role": "user", "content": [{"text": message}]})
+            task_state.message_history.append(
+                {"role": "user", "content": [{"text": message}]}
+            )
             task_state.save_messages()
 
             # Start a new thread to process the updated message history
-            thread = threading.Thread(target=run_task, args=(task_state,), name=f"task-{task_id}")
+            thread = threading.Thread(
+                target=run_task, args=(task_state,), name=f"task-{task_id}"
+            )
             thread.daemon = True
             thread.start()
 
@@ -738,7 +791,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 "toolUseId": tool_use_id,
                 "status": "success",
                 "content": [
-                    {"text": f"Message added to task '{task_id}' and processing started"},
+                    {
+                        "text": f"Message added to task '{task_id}' and processing started"
+                    },
                     {"text": f"Added message: {message[:100]}..."},
                     {"text": f"Results will be saved to: {task_state.result_path}"},
                 ],
@@ -749,7 +804,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": "Error: task_id is required for get_messages action"}],
+                "content": [
+                    {"text": "Error: task_id is required for get_messages action"}
+                ],
             }
 
         # Try to get task state from memory or load from filesystem
@@ -773,7 +830,11 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             content_summary = []
             for block in content_blocks:
                 if "text" in block:
-                    text = block["text"][:200] + "..." if len(block["text"]) > 200 else block["text"]
+                    text = (
+                        block["text"][:200] + "..."
+                        if len(block["text"]) > 200
+                        else block["text"]
+                    )
                     content_summary.append(f"text: {text}")
                 elif "toolUse" in block:
                     tool_info = block["toolUse"]
@@ -783,7 +844,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
                 elif "toolResult" in block:
                     tool_result_info = block["toolResult"]
                     status = tool_result_info.get("status", "unknown")
-                    content_summary.append(f"toolResult: {status} ({tool_result_info.get('toolUseId', 'no-id')})")
+                    content_summary.append(
+                        f"toolResult: {status} ({tool_result_info.get('toolUseId', 'no-id')})"
+                    )
 
             messages_summary.append(f"[{i}] {role}: {' | '.join(content_summary)}")
 
@@ -805,7 +868,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": "Error: task_id is required for get_result action"}],
+                "content": [
+                    {"text": "Error: task_id is required for get_result action"}
+                ],
             }
 
         result_path = TASKS_DIR / f"{task_id}_result.txt"
@@ -817,13 +882,16 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             }
 
         # Read result file
-        with open(result_path, "r") as f:
+        with open(result_path) as f:
             result_content = f.read()
 
         return {
             "toolUseId": tool_use_id,
             "status": "success",
-            "content": [{"text": f"Results for task '{task_id}':"}, {"text": result_content}],
+            "content": [
+                {"text": f"Results for task '{task_id}':"},
+                {"text": result_content},
+            ],
         }
 
     elif action == "stop":
@@ -862,7 +930,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
-                "content": [{"text": "Error: task_id is required for pause/resume action"}],
+                "content": [
+                    {"text": "Error: task_id is required for pause/resume action"}
+                ],
             }
 
         # Try to get task state from memory or load from filesystem
@@ -897,7 +967,9 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             is_running = task_id in task_threads and task_threads[task_id].is_alive()
             if not is_running:
                 thread = threading.Thread(
-                    target=run_task_with_timeout, args=(task_state,), name=f"task-{task_id}"
+                    target=run_task_with_timeout,
+                    args=(task_state,),
+                    name=f"task-{task_id}",
                 )
                 thread.daemon = True
                 thread.start()
@@ -915,4 +987,8 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             }
 
     else:
-        return {"toolUseId": tool_use_id, "status": "error", "content": [{"text": f"Unknown action: {action}"}]}
+        return {
+            "toolUseId": tool_use_id,
+            "status": "error",
+            "content": [{"text": f"Unknown action: {action}"}],
+        }

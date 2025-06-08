@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from strands_live.cli import get_default_tools, async_main, run_cli
+from strands_live.cli import async_main, get_default_tools, run_cli
 
 
 class TestCLI:
@@ -31,7 +31,9 @@ class TestCLI:
         mock_strands_handler_class.assert_called_once()
         call_args = mock_strands_handler_class.call_args
         assert "tools" in call_args.kwargs
-        assert len(call_args.kwargs["tools"]) == 3  # current_time, calculator, and use_llm
+        assert (
+            len(call_args.kwargs["tools"]) == 3
+        )  # current_time, calculator, and use_llm
 
         # Verify SpeechAgent was created with Strands handler
         mock_speech_agent_class.assert_called_once_with(

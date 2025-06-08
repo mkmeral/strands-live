@@ -22,7 +22,7 @@ result = agent.tool.use_llm(
     agent_specialty="coding"
 )
 
-# Ask a research specialist  
+# Ask a research specialist
 result = agent.tool.use_llm(
     prompt="What are the latest developments in quantum computing?",
     agent_specialty="research"
@@ -68,7 +68,6 @@ from strands_tools import (
     swarm,
     think,
     use_aws,
-    use_llm,
     workflow,
 )
 
@@ -77,16 +76,11 @@ PROMPT_APPENDED_TEXT = "Make sure to return short and concise answers. It should
 # Agent specialty system prompts
 AGENT_SPECIALTIES = {
     "coding": "You are an expert software developer and architect. You excel at writing clean, efficient code, debugging issues, and explaining complex programming concepts. You have deep knowledge of multiple programming languages, frameworks, and best practices.",
-    
     "research": "You are a skilled researcher and analyst. You excel at finding, synthesizing, and presenting information from multiple sources. You provide comprehensive, well-sourced answers and can analyze complex topics from multiple perspectives.",
-    
     "writing": "You are a professional writer and editor. You excel at creating clear, engaging content, improving existing text, and adapting writing style to different audiences and purposes. You understand grammar, style, and effective communication principles.",
-    
     "troubleshooting": "You are a systematic problem-solver and diagnostician. You excel at identifying root causes, breaking down complex problems into manageable steps, and providing actionable solutions. You approach issues methodically and thoroughly.",
-    
     "analysis": "You are a data analyst and critical thinker. You excel at examining information, identifying patterns, drawing insights, and presenting findings clearly. You can work with quantitative and qualitative data to provide meaningful conclusions.",
-    
-    "general": "You are a knowledgeable and helpful assistant. You provide accurate, comprehensive answers across a wide range of topics. You're resourceful, think step-by-step, and use available tools effectively to solve problems."
+    "general": "You are a knowledgeable and helpful assistant. You provide accurate, comprehensive answers across a wide range of topics. You're resourceful, think step-by-step, and use available tools effectively to solve problems.",
 }
 
 TOOL_SPEC = {
@@ -103,8 +97,15 @@ TOOL_SPEC = {
                 "agent_specialty": {
                     "type": "string",
                     "description": "The type of specialized agent to use",
-                    "enum": ["coding", "research", "writing", "troubleshooting", "analysis", "general"],
-                    "default": "general"
+                    "enum": [
+                        "coding",
+                        "research",
+                        "writing",
+                        "troubleshooting",
+                        "analysis",
+                        "general",
+                    ],
+                    "default": "general",
                 },
             },
             "required": ["prompt"],
@@ -125,7 +126,7 @@ def use_llm(tool: ToolUse, **kwargs: Any) -> ToolResult:
     How It Works:
     ------------
     1. Selects appropriate system prompt based on agent specialty
-    2. Creates a new Agent instance with specialized configuration  
+    2. Creates a new Agent instance with specialized configuration
     3. Processes the request in an isolated context with full tool access
     4. Returns detailed response with performance metrics
     5. Agent instance is cleaned up automatically after use
@@ -133,7 +134,7 @@ def use_llm(tool: ToolUse, **kwargs: Any) -> ToolResult:
     Available Specialties:
     --------------------
     - coding: Expert software development, debugging, and architecture
-    - research: Information gathering, analysis, and synthesis  
+    - research: Information gathering, analysis, and synthesis
     - writing: Content creation, editing, and communication
     - troubleshooting: Systematic problem diagnosis and resolution
     - analysis: Data examination, pattern recognition, and insights
@@ -155,7 +156,7 @@ def use_llm(tool: ToolUse, **kwargs: Any) -> ToolResult:
     Returns:
         ToolResult: Dictionary with status and response content:
         {
-            "toolUseId": "unique-tool-use-id", 
+            "toolUseId": "unique-tool-use-id",
             "status": "success",
             "content": [
                 {"text": "Response: [Agent's detailed response]"},
@@ -174,9 +175,12 @@ def use_llm(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
     prompt = tool_input["prompt"]
     agent_specialty = tool_input.get("agent_specialty", "general")
-    
+
     # Get system prompt for the specified specialty
-    system_prompt = AGENT_SPECIALTIES.get(agent_specialty, AGENT_SPECIALTIES["general"]) + PROMPT_APPENDED_TEXT
+    system_prompt = (
+        AGENT_SPECIALTIES.get(agent_specialty, AGENT_SPECIALTIES["general"])
+        + PROMPT_APPENDED_TEXT
+    )
 
     tools = [
         agent_graph,

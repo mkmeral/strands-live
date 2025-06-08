@@ -5,10 +5,9 @@ import warnings
 # Import Strands tools
 from strands_tools import calculator, current_time
 
-from .tools import use_llm, tasks
-
 from .speech_agent import SpeechAgent
 from .strands_tool_handler import StrandsToolHandler
+from .tools import tasks
 
 # Suppress warnings
 warnings.filterwarnings("ignore")

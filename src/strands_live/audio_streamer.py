@@ -89,7 +89,9 @@ class AudioStreamer:
                 )
             else:
                 # Fallback for backward compatibility
-                self.bedrock_stream_manager.add_audio_chunk(audio_data, "default", "default")
+                self.bedrock_stream_manager.add_audio_chunk(
+                    audio_data, "default", "default"
+                )
         except Exception as e:
             if self.is_streaming:
                 print(f"Error processing input audio: {e}")
