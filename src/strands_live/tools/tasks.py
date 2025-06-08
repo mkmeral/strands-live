@@ -52,6 +52,7 @@ all_tasks = agent.tool.tasks(
 
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -59,7 +60,7 @@ import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List
 
 from strands import Agent
 from strands.telemetry.metrics import metrics_to_string
@@ -80,6 +81,7 @@ from strands_tools import (
     image_reader,
     journal,
     load_tool,
+    mcp_client,
     memory,
     nova_reels,
     python_repl,
@@ -95,9 +97,21 @@ from strands_tools import (
     workflow,
 )
 
+# Import utilities from strands_agents_builder
+from strands_agents_builder.handlers.callback_handler import callback_handler
+from strands_agents_builder.utils import model_utils
+from strands_agents_builder.utils.kb_utils import load_system_prompt
+
+# Custom tools
+from tools import (
+    store_in_kb,
+    strand,
+    welcome,
+)
+
 logger = logging.getLogger(__name__)
-SYSTEM_PROMPT = "You are a helpful AI assistant. Do what user asks. Make sure to collect enough context " \
-"to accomplish the task first, and then complete it as user wants. Write short and concise responses."
+
+# Tools available to task agents (same as strands.py)
 TOOLS = [
     agent_graph,
     calculator,
@@ -125,6 +139,11 @@ TOOLS = [
     use_aws,
     use_llm,
     workflow,
+    # Custom tools
+    store_in_kb,
+    strand,
+    welcome,
+    mcp_client,
 ]
 
 TOOL_SPEC = {
@@ -156,8 +175,7 @@ TOOL_SPEC = {
                 },
                 "task_id": {
                     "type": "string",
-                    "description": "Unique identifier for the task. If not provided for 'create' action, "
-                    "one will be generated.",
+                    "description": "Unique identifier for the task. Use this to shortly describe your task. Make sure it's unique.",
                 },
                 "prompt": {
                     "type": "string",
@@ -188,6 +206,29 @@ task_states = {}
 task_message_queues = {}  # Message queues for running tasks
 
 
+def create_task_agent(system_prompt: str = None) -> Agent:
+    """Create a new agent for task execution using the same pattern as strands.py"""
+    
+    # Use default model configuration (same as strands.py default)
+    model_path = model_utils.load_path("bedrock")  # Get path to bedrock model
+    model_config = model_utils.load_config("{}")  # Load default config
+    model = model_utils.load_model(model_path, model_config)
+    
+    # Load system prompt (same as strands.py)
+    if system_prompt is None:
+        system_prompt = load_system_prompt()
+    
+    # Create agent with same configuration as strands.py
+    agent = Agent(
+        model=model,
+        tools=TOOLS,
+        system_prompt=system_prompt,
+        callback_handler=callback_handler,
+    )
+    
+    return agent
+
+
 class TaskState:
     """Class to track and manage task state."""
 
@@ -202,6 +243,8 @@ class TaskState:
         self.initial_prompt = prompt
         self.system_prompt = system_prompt
         self.tools = tools or []
+        # Create string representation of tools for JSON serialization
+        self.tools_str = [getattr(tool, '__name__', str(tool)) for tool in self.tools]
         self.timeout = timeout
         self.paused = False
         self.message_history = [{"role": "user", "content": [{"text": prompt}]}]
@@ -225,7 +268,7 @@ class TaskState:
             "last_updated": datetime.now().isoformat(),
             "initial_prompt": self.initial_prompt,
             "system_prompt": self.system_prompt,
-            "tools": self.tools,
+            "tools": self.tools_str,  # Use string representation for JSON serialization
             "timeout": self.timeout,
             "paused": self.paused,
         }
@@ -289,30 +332,45 @@ class TaskState:
         if not state_path.exists():
             return None
 
-        with open(state_path, "r") as f:
-            state_data = json.load(f)
+        try:
+            with open(state_path, "r") as f:
+                state_data = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
+            logger.error(f"Failed to load task state for {task_id}: {e}")
+            logger.error(f"Corrupted state file: {state_path}")
+            return None
 
-        task_state = cls(
-            task_id=state_data["task_id"],
-            prompt=state_data["initial_prompt"],
-            system_prompt=state_data["system_prompt"],
-            tools=state_data.get("tools", []),
-            timeout=state_data.get("timeout", 900),
-        )
+        try:
+            task_state = cls(
+                task_id=state_data["task_id"],
+                prompt=state_data["initial_prompt"],
+                system_prompt=state_data["system_prompt"],
+                tools=TOOLS,  # Always use the current TOOLS list for actual functionality
+                timeout=state_data.get("timeout", 900),
+            )
 
-        task_state.status = state_data["status"]
-        task_state.created_at = state_data["created_at"]
-        task_state.last_updated = state_data["last_updated"]
-        task_state.paused = state_data.get("paused", False)
+            task_state.status = state_data["status"]
+            task_state.created_at = state_data["created_at"]
+            task_state.last_updated = state_data["last_updated"]
+            task_state.paused = state_data.get("paused", False)
 
-        if messages_path.exists():
-            with open(messages_path, "r") as f:
-                task_state.message_history = json.load(f)
+            if messages_path.exists():
+                try:
+                    with open(messages_path, "r") as f:
+                        task_state.message_history = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError, OSError) as e:
+                    logger.error(f"Failed to load messages for {task_id}: {e}")
+                    # Continue with default message history if messages file is corrupted
 
-        return task_state
+            return task_state
+            
+        except (KeyError, TypeError) as e:
+            logger.error(f"Invalid task state data for {task_id}: {e}")
+            logger.error(f"State data: {state_data}")
+            return None
 
 
-def run_task(task_state: TaskState, parent_agent: Optional[Agent] = None):
+def run_task(task_state: TaskState):
     """Run a task in the background with message queue processing."""
     start_time = time.time()
 
@@ -325,30 +383,12 @@ def run_task(task_state: TaskState, parent_agent: Optional[Agent] = None):
         # Update task status
         task_state.update_status("running")
 
-        # Initialize tools from parent agent if available
-        tools = []
-        trace_attributes = {}
+        # Create agent using the same pattern as strands.py
+        agent = create_task_agent(task_state.system_prompt)
 
-        if parent_agent:
-            if task_state.tools:
-                # Only load specified tools if provided
-                for tool_name in task_state.tools:
-                    if tool_name in parent_agent.tool_registry.registry:
-                        tools.append(parent_agent.tool_registry.registry[tool_name])
-            else:
-                # Otherwise load all tools
-                tools = list(parent_agent.tool_registry.registry.values())
-            trace_attributes = parent_agent.trace_attributes
-
-        # Initialize the agent with existing message history
-        agent = Agent(
-            model=parent_agent.model,
-            messages=task_state.message_history.copy(),
-            tools=tools,
-            system_prompt=task_state.system_prompt,
-            trace_attributes=trace_attributes,
-            callback_handler=None,
-        )
+        # Set existing message history if available
+        if task_state.message_history:
+            agent.messages = task_state.message_history.copy()
 
         # Store agent in global dict for later interaction
         task_agents[task_state.task_id] = agent
@@ -435,37 +475,10 @@ def run_task(task_state: TaskState, parent_agent: Optional[Agent] = None):
 
         task_state.append_result(f"Task completed in {elapsed_time:.2f} seconds")
 
-        # Send notification if parent agent has notify tool
-        if parent_agent and hasattr(parent_agent.tool, "notify"):
-            try:
-                parent_agent.tool.notify(
-                    message=f"Task '{task_state.task_id}' completed in {elapsed_time:.2f} seconds",
-                    title="Task Complete",
-                    category="tasks",
-                    source=task_state.task_id,
-                    show_system_notification=True if task_state.timeout > 60 else False,
-                )
-            except Exception as e:
-                logger.error(f"Failed to send task completion notification: {e}")
-
     except TimeoutError:
         logger.error(f"Task {task_state.task_id} timed out after {task_state.timeout} seconds")
         task_state.update_status("timeout")
         task_state.append_result(f"ERROR: Task timed out after {task_state.timeout} seconds")
-
-        # Send timeout notification if parent agent has notify tool
-        if parent_agent and hasattr(parent_agent.tool, "notify"):
-            try:
-                parent_agent.tool.notify(
-                    message=f"Task '{task_state.task_id}' timed out after {task_state.timeout} seconds",
-                    title="Task Timeout",
-                    priority="high",
-                    category="tasks",
-                    source=task_state.task_id,
-                    show_system_notification=True,
-                )
-            except Exception as e:
-                logger.error(f"Failed to send task timeout notification: {e}")
 
     except Exception as e:
         # Get the full stack trace
@@ -474,22 +487,8 @@ def run_task(task_state: TaskState, parent_agent: Optional[Agent] = None):
         task_state.update_status("error")
         task_state.append_result(f"ERROR: {str(e)}\n\nStack Trace:\n{stack_trace}")
 
-        # Send error notification if parent agent has notify tool
-        if parent_agent and hasattr(parent_agent.tool, "notify"):
-            try:
-                parent_agent.tool.notify(
-                    message=f"Error in task '{task_state.task_id}': {str(e)}",
-                    title="Task Error",
-                    priority="high",
-                    category="tasks",
-                    source=task_state.task_id,
-                    show_system_notification=True,
-                )
-            except Exception as notify_err:
-                logger.error(f"Failed to send task error notification: {notify_err}")
 
-
-def run_task_with_timeout(task_state: TaskState, parent_agent: Optional[Agent] = None):
+def run_task_with_timeout(task_state: TaskState):
     """Run a task with timeout handling."""
 
     def timeout_handler():
@@ -507,7 +506,7 @@ def run_task_with_timeout(task_state: TaskState, parent_agent: Optional[Agent] =
 
     try:
         # Run the actual task
-        run_task(task_state, parent_agent)
+        run_task(task_state)
     finally:
         # Cancel the timer if task completes before timeout
         timer.cancel()
@@ -540,26 +539,16 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
     action = tool_input["action"]
     task_id = tool_input.get("task_id")
 
-    parent_agent = kwargs.get("agent")
-
     if action == "create":
         # Create a new task
         prompt = tool_input.get("prompt")
-        system_prompt = SYSTEM_PROMPT
-        tools = TOOLS
+        system_prompt = tool_input.get("system_prompt") or load_system_prompt()
 
         if not prompt:
             return {
                 "toolUseId": tool_use_id,
                 "status": "error",
                 "content": [{"text": "Error: prompt is required for create action"}],
-            }
-
-        if not system_prompt:
-            return {
-                "toolUseId": tool_use_id,
-                "status": "error",
-                "content": [{"text": "Error: system_prompt is required for create action"}],
             }
 
         # Generate a task_id if not provided
@@ -575,7 +564,7 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             }
 
         # Create task state
-        task_state = TaskState(task_id, prompt, system_prompt, tools)
+        task_state = TaskState(task_id, prompt, system_prompt, TOOLS)
         task_states[task_id] = task_state
 
         # Add timeout if provided
@@ -583,7 +572,7 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             task_state.timeout = tool_input.get("timeout")
 
         # Start task in a new thread
-        thread = threading.Thread(target=run_task_with_timeout, args=(task_state, parent_agent), name=f"task-{task_id}")
+        thread = threading.Thread(target=run_task_with_timeout, args=(task_state,), name=f"task-{task_id}")
         thread.daemon = True
         thread.start()
 
@@ -649,12 +638,15 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
         # Build task list with status
         tasks_info = []
+        corrupted_tasks = []
+        
         for tid in sorted(all_task_ids):
             # Get task state
             state = task_states.get(tid)
             if not state:
                 state = TaskState.load(tid)
                 if not state:
+                    corrupted_tasks.append(tid)
                     continue
 
             # Check if thread is running
@@ -663,10 +655,26 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
             tasks_info.append(f"Task '{tid}': Status={state.status}, {running_status}, Created={state.created_at}")
 
+        # Prepare response content
+        response_content = []
+        if tasks_info:
+            response_content.extend([
+                {"text": f"Found {len(tasks_info)} tasks:"},
+                {"text": "\n".join(tasks_info)}
+            ])
+        
+        if corrupted_tasks:
+            response_content.append({
+                "text": f"Warning: Found {len(corrupted_tasks)} corrupted task files that could not be loaded: {', '.join(corrupted_tasks)}"
+            })
+            
+        if not tasks_info and not corrupted_tasks:
+            response_content = [{"text": "No tasks found"}]
+
         return {
             "toolUseId": tool_use_id,
             "status": "success",
-            "content": [{"text": f"Found {len(tasks_info)} tasks:"}, {"text": "\n".join(tasks_info)}],
+            "content": response_content,
         }
 
     elif action == "add_message":
@@ -719,7 +727,7 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             task_state.save_messages()
 
             # Start a new thread to process the updated message history
-            thread = threading.Thread(target=run_task, args=(task_state, parent_agent), name=f"task-{task_id}")
+            thread = threading.Thread(target=run_task, args=(task_state,), name=f"task-{task_id}")
             thread.daemon = True
             thread.start()
 
@@ -889,7 +897,7 @@ def tasks(tool: ToolUse, **kwargs: Any) -> ToolResult:
             is_running = task_id in task_threads and task_threads[task_id].is_alive()
             if not is_running:
                 thread = threading.Thread(
-                    target=run_task_with_timeout, args=(task_state, parent_agent), name=f"task-{task_id}"
+                    target=run_task_with_timeout, args=(task_state,), name=f"task-{task_id}"
                 )
                 thread.daemon = True
                 thread.start()
