@@ -30,7 +30,7 @@ class TestCLIIntegration:
 
         assert result.returncode == 0
         assert "--debug" in result.stdout
-        assert "Nova Sonic Python Streaming" in result.stdout
+        assert "Strands Live Speech Agent with Context Gathering" in result.stdout
 
     @patch("strands_live.cli.SpeechAgent")
     @patch("strands_live.cli.StrandsToolHandler")
@@ -59,11 +59,19 @@ class TestCLIIntegration:
             len(call_args.kwargs["tools"]) == 3
         )  # current_time, calculator, and use_llm
 
-        # Verify SpeechAgent was created with Strands handler
+        # Verify SpeechAgent was created with Strands handler and default context params
         mock_speech_agent.assert_called_once_with(
             model_id="amazon.nova-sonic-v1:0",
             region="us-east-1",
             tool_handler=mock_strands_instance,
+            system_prompt=None,
+            working_directory=None,
+            include_directory_structure=False,
+            include_project_files=False,
+            include_git_context=False,
+            custom_file_patterns=None,
+            max_directory_depth=2,
+            max_files_listed=20
         )
 
     @patch("strands_live.cli.SpeechAgent")
@@ -94,11 +102,19 @@ class TestCLIIntegration:
         assert "tools" in call_args.kwargs
         assert call_args.kwargs["tools"] == custom_tools
 
-        # Verify SpeechAgent was created with Strands handler
+        # Verify SpeechAgent was created with Strands handler and default context params
         mock_speech_agent.assert_called_once_with(
             model_id="amazon.nova-sonic-v1:0",
             region="us-east-1",
             tool_handler=mock_strands_instance,
+            system_prompt=None,
+            working_directory=None,
+            include_directory_structure=False,
+            include_project_files=False,
+            include_git_context=False,
+            custom_file_patterns=None,
+            max_directory_depth=2,
+            max_files_listed=20
         )
 
 

@@ -35,11 +35,19 @@ class TestCLI:
             len(call_args.kwargs["tools"]) == 3
         )  # current_time, calculator, and use_llm
 
-        # Verify SpeechAgent was created with Strands handler
+        # Verify SpeechAgent was created with Strands handler and default context params
         mock_speech_agent_class.assert_called_once_with(
             model_id="amazon.nova-sonic-v1:0",
             region="us-east-1",
             tool_handler=mock_strands_handler,
+            system_prompt=None,
+            working_directory=None,
+            include_directory_structure=False,
+            include_project_files=False,
+            include_git_context=False,
+            custom_file_patterns=None,
+            max_directory_depth=2,
+            max_files_listed=20
         )
 
         # Verify methods were called
@@ -197,6 +205,17 @@ class TestCLI:
         # Mock argument parsing to return default flags
         mock_args = Mock()
         mock_args.debug = False
+        mock_args.model_id = "amazon.nova-sonic-v1:0"
+        mock_args.region = "us-east-1"
+        mock_args.working_dir = None
+        mock_args.include_directory = False
+        mock_args.include_files = False
+        mock_args.include_git = False
+        mock_args.file_patterns = None  # This should be None, not a Mock
+        mock_args.max_depth = 2
+        mock_args.max_files = 20
+        mock_args.custom_prompt = None
+        mock_args.show_context = False
         mock_parse_args.return_value = mock_args
 
         # Run CLI
@@ -212,6 +231,17 @@ class TestCLI:
         # Mock argument parsing to return debug flag
         mock_args = Mock()
         mock_args.debug = True
+        mock_args.model_id = "amazon.nova-sonic-v1:0"
+        mock_args.region = "us-east-1"
+        mock_args.working_dir = None
+        mock_args.include_directory = False
+        mock_args.include_files = False
+        mock_args.include_git = False
+        mock_args.file_patterns = None  # This should be None, not a Mock
+        mock_args.max_depth = 2
+        mock_args.max_files = 20
+        mock_args.custom_prompt = None
+        mock_args.show_context = False
         mock_parse_args.return_value = mock_args
 
         # Run CLI
@@ -230,6 +260,17 @@ class TestCLI:
         # Mock argument parsing
         mock_args = Mock()
         mock_args.debug = False
+        mock_args.model_id = "amazon.nova-sonic-v1:0"
+        mock_args.region = "us-east-1"
+        mock_args.working_dir = None
+        mock_args.include_directory = False
+        mock_args.include_files = False
+        mock_args.include_git = False
+        mock_args.file_patterns = None  # This should be None, not a Mock
+        mock_args.max_depth = 2
+        mock_args.max_files = 20
+        mock_args.custom_prompt = None
+        mock_args.show_context = False
         mock_parse_args.return_value = mock_args
 
         # Mock asyncio.run to raise exception
@@ -239,4 +280,4 @@ class TestCLI:
         run_cli()
 
         # Verify error was printed
-        mock_print.assert_called_with("Application error: CLI error")
+        mock_print.assert_called_with("❌ Application error: CLI error")

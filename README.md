@@ -1,388 +1,284 @@
-# Strands Live 🎤
+# Strands Live Speech Agent
 
-A live speech agent using Amazon Nova Sonic for real-time bidirectional audio streaming with Strands Agents SDK integration.
+A powerful speech-to-speech AI agent built with Amazon Bedrock Nova Sonic and Strands Agents SDK, featuring automatic project context gathering for enhanced conversational AI experiences.
 
 ## Features
 
-- **Real-time Audio Streaming**: Bidirectional audio communication with Amazon Nova Sonic
-- **Tool Integration**: Powered by Strands Agents SDK with 50+ built-in tools
-- **Extensible**: Easy to add custom tools and capabilities
-- **Voice Activity Detection**: Smart audio processing with barge-in support
-- **Cross-platform**: Works on macOS, Linux, and Windows
+- **🎙️ Real-time Speech Processing**: Continuous speech-to-speech conversation with Amazon Nova Sonic
+- **🔧 Strands Agents Integration**: Access to powerful tools like file operations, calculations, and web requests
+- **📁 Automatic Context Gathering**: Intelligent analysis of your project structure, files, and git repository
+- **⚙️ Flexible Configuration**: Customize context gathering, model parameters, and tool selection
+- **🧪 Comprehensive Testing**: Full test coverage with 149+ passing tests
+
+## Installation
+
+```bash
+# Install the package
+pip install -e .
+
+# Install with development dependencies
+pip install -e ".[dev]"
+```
 
 ## Quick Start
 
-### Installation
-
+### Basic Usage (No Context)
 ```bash
-# Install from source
-git clone https://github.com/murmeral/strands-live.git
-cd strands-live
-make install
+# Simple speech agent
+strands-live
 
-# Or install as CLI
-make install-cli
+# With debug mode
+strands-live --debug
 ```
 
-### Usage
-
+### Context-Aware Usage
 ```bash
-# Run directly
-python strands_live_main.py
+# Include directory structure
+strands-live --include-directory
 
-# Or use CLI after install-cli
-strands-live --help
+# Include project files (README, pyproject.toml, etc.)
+strands-live --include-files
+
+# Include git repository context
+strands-live --include-git
+
+# All context features enabled
+strands-live --include-directory --include-files --include-git
 ```
 
-### Configuration
-
-Set up your AWS credentials and configure the region:
-
+### Advanced Configuration
 ```bash
-export AWS_REGION=us-west-2  # or your preferred region
-export AWS_ACCESS_KEY_ID=your_access_key
-export AWS_SECRET_ACCESS_KEY=your_secret_key
+# Custom file patterns
+strands-live --include-files --file-patterns "README.md,docs/*.md,package.json"
+
+# Different working directory
+strands-live --working-dir /path/to/project --include-directory --include-files
+
+# Custom model and region
+strands-live --model-id amazon.nova-sonic-v1:0 --region us-west-2
+
+# Show full context preview
+strands-live --include-directory --include-files --include-git --show-context
 ```
 
-## Project Structure
+## Context Gathering Features
 
+The speech agent can automatically gather context about your project to provide more relevant assistance:
+
+### 📁 Directory Structure Context
+- Automatically maps your project's directory tree
+- Configurable depth limits (default: 2 levels)
+- File count limits to prevent overwhelming the context
+- Smart filtering of common directories (.git, .venv, __pycache__)
+
+### 📄 Project Files Context
+- Reads and includes key project files automatically:
+  - `README.md` - Project documentation
+  - `pyproject.toml` - Python project configuration
+  - `package.json` - Node.js project configuration
+  - `CHANGELOG.md` - Release notes
+  - `AmazonQ.md` - AI assistant documentation
+- Custom file patterns supported
+- Safe file reading with encoding detection
+
+### 🌿 Git Repository Context
+- Current branch information
+- Recent commit history (last 5 commits)
+- Working directory status (modified, added, deleted files)
+- Clean/dirty repository state
+
+## Configuration Options
+
+### Context Options
+- `--working-dir`: Set working directory for context gathering
+- `--include-directory`: Include directory structure in context
+- `--include-files`: Include project files in context
+- `--include-git`: Include git repository context
+- `--file-patterns`: Custom comma-separated file patterns
+- `--max-depth`: Maximum directory depth (default: 2)
+- `--max-files`: Maximum number of files to list (default: 20)
+
+### Model Options
+- `--model-id`: Bedrock model ID (default: amazon.nova-sonic-v1:0)
+- `--region`: AWS region (default: us-east-1)
+- `--custom-prompt`: Custom system prompt
+
+### Debug Options
+- `--debug`: Enable debug mode
+- `--show-context`: Display full context preview
+
+## Programmatic Usage
+
+### Basic Agent
+```python
+from strands_live.speech_agent import SpeechAgent
+from strands_live.strands_tool_handler import StrandsToolHandler
+
+# Create agent without context
+agent = SpeechAgent(
+    model_id="amazon.nova-sonic-v1:0",
+    region="us-east-1",
+    tool_handler=StrandsToolHandler()
+)
+
+await agent.initialize()
+await agent.start_conversation()
 ```
-strands-live/
-├── src/strands_live/           # Main package source
-│   ├── __init__.py            # Package initialization
-│   ├── cli.py                 # Command-line interface
-│   ├── speech_agent.py        # Main SpeechAgent orchestrator
-│   ├── audio_streamer.py      # Audio input/output management
-│   ├── bedrock_streamer.py    # Nova Sonic streaming handler
-│   ├── tool_handler_base.py   # Base tool handler interface
-│   ├── tool_handler.py        # Basic tool handler implementation
-│   └── strands_tool_handler.py # Strands SDK integration
-├── tests/                     # Test suite
-│   ├── test_speech_agent.py
-│   ├── test_audio_streamer.py
-│   ├── test_bedrock_streamer.py
-│   └── test_tool_handlers.py
-├── pyproject.toml             # Project configuration
-├── Makefile                   # Build automation
-├── README.md                  # This file
-└── requirements.txt           # Dependencies
+
+### Context-Aware Agent
+```python
+from strands_live.speech_agent import SpeechAgent
+from strands_live.strands_tool_handler import StrandsToolHandler
+
+# Create agent with context gathering
+agent = SpeechAgent(
+    model_id="amazon.nova-sonic-v1:0",
+    region="us-east-1",
+    tool_handler=StrandsToolHandler(),
+    # Context configuration
+    include_directory_structure=True,
+    include_project_files=True,
+    include_git_context=True,
+    working_directory=".",
+    max_directory_depth=2,
+    max_files_listed=20
+)
+
+# Inspect context
+print(agent.get_current_context_summary())
+print(agent.get_raw_context())
+
+await agent.initialize()
+await agent.start_conversation()
+```
+
+### Dynamic Context Management
+```python
+# Refresh context during conversation
+agent.refresh_context()
+
+# Get context information
+summary = agent.get_current_context_summary()
+raw_context = agent.get_raw_context()
 ```
 
 ## Architecture
 
-### Core Components
+The speech agent consists of several key components:
 
-#### 1. SpeechAgent (`speech_agent.py`)
-- **Role**: High-level orchestrator for the entire speech processing pipeline
-- **Responsibilities**:
-  - Coordinates audio streaming and Bedrock communication
-  - Manages component lifecycle (initialize, start, stop)
-  - Handles error recovery and cleanup
-- **Key Methods**:
-  - `initialize()`: Sets up streaming connections
-  - `start_conversation()`: Begins real-time audio processing
-  - `stop_conversation()`: Cleanly shuts down resources
+- **SpeechAgent**: Main orchestrator with context building capabilities
+- **ContextBuilder**: Intelligent project analysis and context generation
+- **BedrockStreamManager**: Handles real-time streaming with Amazon Bedrock
+- **AudioStreamer**: Manages audio input/output with PyAudio
+- **StrandsToolHandler**: Provides access to Strands Agents SDK tools
 
-#### 2. BedrockStreamManager (`bedrock_streamer.py`)
-- **Role**: Manages bidirectional streaming with Amazon Nova Sonic
-- **Responsibilities**:
-  - Establishes WebSocket-like streaming connections
-  - Handles audio encoding/decoding (PCM 16kHz)
-  - Processes tool use requests from the model
-  - Manages conversation state and context
-- **Key Features**:
-  - Asynchronous streaming with proper backpressure handling
-  - Tool integration with response streaming
-  - Error recovery and reconnection logic
-  - Performance timing and metrics
+## Available Tools
 
-#### 3. AudioStreamer (`audio_streamer.py`)
-- **Role**: Real-time audio capture and playback
-- **Responsibilities**:
-  - Captures microphone input using PyAudio
-  - Plays back synthesized speech
-  - Handles audio format conversion
-  - Manages audio device configuration
-- **Technical Details**:
-  - 16kHz PCM mono audio processing
-  - Configurable buffer sizes for latency optimization
-  - Cross-platform audio device detection
-  - Real-time audio processing with minimal latency
+The agent comes with built-in tools powered by Strands Agents SDK:
 
-#### 4. Tool Handler System
-Three-tier tool handling architecture:
+- **Calculator**: Advanced mathematical computations
+- **Current Time**: Time and date queries
+- **Tasks**: Task management and tracking
+- **File Operations**: Read, write, and manage files
+- **Web Requests**: HTTP/HTTPS API calls
+- **AWS Services**: Full AWS SDK access
 
-##### ToolHandlerBase (`tool_handler_base.py`)
-- Abstract base class defining the tool handler interface
-- Standardized method signatures for tool processing
-- Error handling patterns and response formatting
+## Environment Setup
 
-##### ToolHandler (`tool_handler.py`)
-- Basic implementation with essential tools
-- Mathematical calculations, time utilities
-- Lightweight and minimal dependencies
-
-##### StrandsToolHandler (`strands_tool_handler.py`)
-- Full Strands SDK integration
-- Access to 50+ powerful tools (file operations, web requests, AWS services, etc.)
-- Extensible plugin architecture
-- Hot-reloadable custom tools
-
-### Data Flow
-
-```
-Microphone → AudioStreamer → BedrockStreamManager → Nova Sonic Model
-     ↑                                                      ↓
-Speaker ← AudioStreamer ← BedrockStreamManager ← Tool Responses
-                                ↓
-                         ToolHandler System
-                              ↓
-                    External APIs/Services
-```
-
-### Technical Implementation Details
-
-#### Audio Processing Pipeline
-1. **Capture**: PyAudio captures 16kHz PCM audio from microphone
-2. **Buffering**: Audio chunks are buffered for streaming efficiency
-3. **Encoding**: Raw PCM data is sent to Nova Sonic via streaming API
-4. **Response**: Model generates both audio and potential tool calls
-5. **Playback**: Synthesized audio is played through speakers
-6. **Tool Execution**: Tool calls are processed asynchronously
-
-#### Streaming Architecture
-- **Bidirectional Streaming**: Uses Amazon Bedrock's real-time streaming API
-- **Backpressure Handling**: Prevents buffer overflow during high-throughput scenarios
-- **Error Recovery**: Automatic reconnection and state restoration
-- **Performance Monitoring**: Built-in timing and metrics collection
-
-#### Tool Integration
-- **Modular Design**: Tools are loaded dynamically based on configuration
-- **Async Processing**: Tool execution doesn't block audio streaming
-- **Error Isolation**: Tool failures don't crash the main conversation flow
-- **Response Streaming**: Tool results are streamed back to the user in real-time
-
-## Configuration Options
-
-### Environment Variables
-
+### Required Environment Variables
 ```bash
-# AWS Configuration
-AWS_REGION=us-west-2                    # AWS region for Bedrock
-AWS_ACCESS_KEY_ID=your_access_key       # AWS access key
-AWS_SECRET_ACCESS_KEY=your_secret_key   # AWS secret key
+# AWS credentials (for Bedrock access)
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_DEFAULT_REGION="us-east-1"
 
-# Model Configuration
-BEDROCK_MODEL_ID=amazon.nova-sonic-v1:0 # Nova Sonic model version
-BEDROCK_REGION=us-west-2                # Bedrock service region
-
-# Audio Configuration
-AUDIO_SAMPLE_RATE=16000                 # Audio sample rate (Hz)
-AUDIO_CHANNELS=1                        # Audio channels (mono)
-AUDIO_CHUNK_SIZE=1024                   # Audio buffer size
+# Optional: Default timezone
+export DEFAULT_TIMEZONE="UTC"
 ```
 
-### Runtime Configuration
-
-```python
-# Initialize with custom configuration
-speech_agent = SpeechAgent(
-    model_id="amazon.nova-sonic-v1:0",
-    region="us-west-2",
-    tool_handler=StrandsToolHandler()  # or ToolHandler() for basic tools
-)
-```
-
-## Performance Characteristics
-
-### Latency Metrics
-- **Audio Latency**: ~100-200ms round-trip (microphone to speaker)
-- **Tool Processing**: Variable based on tool complexity (50ms-5s)
-- **Model Response**: ~200-500ms for speech generation
-- **Total Conversation Latency**: ~300-700ms typical
-
-### Resource Usage
-- **Memory**: ~100-300MB depending on tool configuration
-- **CPU**: ~10-30% on modern systems during active conversation
-- **Network**: ~50-200 KB/s during streaming
-- **Audio**: Real-time processing with minimal buffering
+### Audio Requirements
+- Microphone access for speech input
+- Audio output capability
+- PyAudio dependencies (automatically installed)
 
 ## Development
 
-### Setup Development Environment
-
-```bash
-# Clone and install development dependencies
-git clone https://github.com/murmeral/strands-live.git
-cd strands-live
-make install
-
-# Install additional development tools
-pip install pytest black ruff mypy
-```
-
 ### Running Tests
-
 ```bash
 # Run all tests
-make test
-
-# Run specific test file
-pytest tests/test_speech_agent.py -v
+pytest tests/
 
 # Run with coverage
-pytest --cov=strands_live tests/
+pytest tests/ --cov=src/strands_live
+
+# Run specific test categories
+pytest tests/test_speech_agent.py -v
+pytest tests/integration/ -v
 ```
 
-### Code Quality
+### Project Structure
+```
+src/strands_live/
+├── speech_agent.py          # Main speech agent with context
+├── context_builder.py       # Project context analysis
+├── cli.py                   # Command-line interface
+├── bedrock_streamer.py      # Bedrock streaming manager
+├── audio_streamer.py        # Audio input/output
+├── strands_tool_handler.py  # Strands tools integration
+└── tools/                   # Built-in tools
+    └── tasks.py
+```
 
+## Examples
+
+### Development Assistant
 ```bash
-# Format code
-make format
-
-# Lint code
-make lint
-
-# Type checking
-mypy src/strands_live/
+# Perfect for development workflows
+strands-live --include-directory --include-files --include-git --working-dir ~/my-project
 ```
 
-### Building and Distribution
-
+### Documentation Helper
 ```bash
-# Build package
-make build
-
-# Install locally
-make install-cli
-
-# Clean build artifacts
-make clean
+# Focus on documentation files
+strands-live --include-files --file-patterns "README.md,docs/*.md,*.rst"
 ```
 
-## Extending the System
-
-### Adding Custom Tools
-
-1. **Create Tool Handler**:
-```python
-from strands_live.tool_handler_base import ToolHandlerBase
-
-class CustomToolHandler(ToolHandlerBase):
-    async def process_tool_use(self, tool_name, tool_use_content):
-        if tool_name == "my_custom_tool":
-            # Your tool implementation
-            return {"result": "custom response"}
-        return await super().process_tool_use(tool_name, tool_use_content)
-```
-
-2. **Register with SpeechAgent**:
-```python
-speech_agent = SpeechAgent(tool_handler=CustomToolHandler())
-```
-
-### Integrating External Services
-
-The tool handler system makes it easy to integrate external APIs and services:
-
-```python
-async def process_tool_use(self, tool_name, tool_use_content):
-    if tool_name == "weather_api":
-        # Call external weather service
-        weather_data = await fetch_weather_data(tool_use_content["location"])
-        return {"weather": weather_data}
+### Code Review Assistant
+```bash
+# Include git context for code reviews
+strands-live --include-git --include-files --file-patterns "*.py,*.js,*.md"
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Audio Device Issues**:
-   - Check microphone permissions
-   - Verify audio device availability
-   - Test with `python -c "import pyaudio; print('PyAudio working')"`
-
-2. **AWS Credentials**:
-   - Ensure AWS credentials are properly configured
-   - Check IAM permissions for Bedrock access
-   - Verify region availability for Nova Sonic
-
-3. **Streaming Issues**:
-   - Check network connectivity
-   - Monitor for firewall blocking
-   - Verify Bedrock service availability
+1. **Audio Issues**: Ensure microphone permissions and PyAudio installation
+2. **AWS Credentials**: Verify AWS credentials and region configuration
+3. **Context Too Large**: Reduce `--max-depth` or `--max-files` values
+4. **Git Context Missing**: Ensure you're in a git repository
 
 ### Debug Mode
-
 ```bash
-# Run with debug logging
-strands-live --debug
-
-# Check logs
-tail -f /tmp/strands-live.log
+# Enable debug output
+strands-live --debug --show-context
 ```
-
-## Requirements
-
-### System Requirements
-- **Python**: 3.10+ (3.11+ recommended)
-- **Memory**: 1GB+ available RAM
-- **Network**: Stable internet connection for streaming
-- **Audio**: Microphone and speakers/headphones
-
-### Dependencies
-- **Core**: `strands-agents>=0.1.0`, `strands-agents-tools>=0.1.0`
-- **Audio**: `pyaudio>=0.2.11`
-- **AWS**: `boto3>=1.26.0`, `botocore>=1.29.0`
-- **Utilities**: `pytz>=2023.3`
-
-## API Reference
-
-### SpeechAgent
-
-```python
-class SpeechAgent:
-    def __init__(self, model_id: str, region: str, tool_handler: Optional[ToolHandlerBase] = None)
-    async def initialize(self) -> None
-    async def start_conversation(self) -> None
-    async def stop_conversation(self) -> None
-```
-
-### ToolHandlerBase
-
-```python
-class ToolHandlerBase:
-    async def process_tool_use(self, tool_name: str, tool_use_content: dict) -> dict
-    def get_available_tools(self) -> List[str]
-```
-
-## License
-
-Apache License 2.0
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests and formatting (`make test format`)
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Submit a pull request
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass: `pytest tests/`
+5. Submit a pull request
 
-### Development Guidelines
+## License
 
-- Follow PEP 8 style guidelines
-- Add tests for new functionality
-- Update documentation for API changes
-- Use type hints for better code clarity
-- Keep functions focused and modular
+This project is licensed under the Apache License 2.0.
 
-## Roadmap
+## Support
 
-- [ ] Support for additional language models
-- [ ] Multi-language conversation support
-- [ ] Voice customization options
-- [ ] Advanced audio processing features
-- [ ] Mobile platform support
-- [ ] Cloud deployment configurations
+For issues and questions:
+- Check the troubleshooting section
+- Review test cases for usage examples
+- Open an issue on GitHub

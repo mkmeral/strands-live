@@ -1,8 +1,11 @@
 import json
 import uuid
+from pathlib import Path
+from typing import List, Optional, Union
 
 from .audio_streamer import AudioStreamer
 from .bedrock_streamer import BedrockStreamManager, debug_print, time_it_async
+from .context_builder import ContextBuilder, create_enhanced_system_prompt
 from .tool_handler import ToolHandler
 
 
@@ -25,6 +28,14 @@ class SpeechAgent:
         channel_count=1,
         audio_encoding="base64",
         audio_type="SPEECH",
+        # Context building parameters
+        working_directory: Optional[Union[str, Path]] = None,
+        include_directory_structure: bool = False,
+        include_project_files: bool = False,
+        include_git_context: bool = False,
+        custom_file_patterns: Optional[List[str]] = None,
+        max_directory_depth: int = 2,
+        max_files_listed: int = 20,
     ):
         """Initialize the speech agent with its components.
 
@@ -42,16 +53,33 @@ class SpeechAgent:
             channel_count: Audio channel count
             audio_encoding: Audio encoding format
             audio_type: Audio type
+            
+            # Context building parameters
+            working_directory: Directory to gather context from (defaults to current directory)
+            include_directory_structure: Include directory tree in context
+            include_project_files: Include contents of README.md, package.json, etc.
+            include_git_context: Include git branch, recent commits, and status
+            custom_file_patterns: Custom list of files to include in context
+            max_directory_depth: Maximum depth for directory tree
+            max_files_listed: Maximum number of files to list in directory tree
         """
         self.model_id = model_id
         self.region = region
 
+        # Store context configuration
+        self.working_directory = Path(working_directory) if working_directory else Path.cwd()
+        self.include_directory_structure = include_directory_structure
+        self.include_project_files = include_project_files
+        self.include_git_context = include_git_context
+        self.custom_file_patterns = custom_file_patterns
+        self.max_directory_depth = max_directory_depth
+        self.max_files_listed = max_files_listed
+
+        # Build enhanced system prompt with context
+        enhanced_prompt = self._build_enhanced_system_prompt(system_prompt)
+
         # Configuration
-        self.system_prompt = system_prompt or (
-            "You are a helpful assistant based on Strands Agents. You can access internet, customer's files and AWS account through tools. "
-            "Help user achieve thier goal. Keep the interaction conversational."
-            "When reading order numbers, please read each digit individually, separated by pauses. For example, order #1234 should be read as 'order number one-two-three-four' rather than 'order number one thousand two hundred thirty-four'."
-        )
+        self.system_prompt = enhanced_prompt
         self.max_tokens = max_tokens
         self.top_p = top_p
         self.temperature = temperature
@@ -316,3 +344,107 @@ class SpeechAgent:
     async def process_tool_use(self, tool_name, tool_use_content):
         """Process tool use - delegated to tool handler for backward compatibility."""
         return await self.tool_handler.process_tool_use(tool_name, tool_use_content)
+    
+    def _build_enhanced_system_prompt(self, base_prompt: Optional[str] = None) -> str:
+        """Build enhanced system prompt with project context.
+        
+        Args:
+            base_prompt: Base system prompt to enhance
+            
+        Returns:
+            Enhanced system prompt with context
+        """
+        # Use provided base prompt or default
+        if base_prompt is None:
+            base_prompt = (
+                "You are a helpful assistant based on Strands Agents. You can access internet, customer's files and AWS account through tools. "
+                "Help user achieve their goal. Keep the interaction conversational. "
+                "When reading order numbers, please read each digit individually, separated by pauses. For example, order #1234 should be read as 'order number one-two-three-four' rather than 'order number one thousand two hundred thirty-four'."
+            )
+        
+        # If no context features are enabled, return base prompt
+        if not (self.include_directory_structure or self.include_project_files or self.include_git_context):
+            return base_prompt
+        
+        try:
+            # Create context builder
+            context_builder = ContextBuilder(self.working_directory)
+            
+            # Build enhanced prompt
+            enhanced_prompt = create_enhanced_system_prompt(
+                base_prompt=base_prompt,
+                context_builder=context_builder,
+                include_directory=self.include_directory_structure,
+                include_files=self.include_project_files,
+                include_git=self.include_git_context,
+                file_patterns=self.custom_file_patterns
+            )
+            
+            return enhanced_prompt
+            
+        except Exception as e:
+            print(f"Warning: Failed to build enhanced context: {e}")
+            return base_prompt
+    
+    def refresh_context(self) -> str:
+        """Refresh the project context and return the updated system prompt.
+        
+        This can be called to update the context if files have changed during
+        the conversation.
+        
+        Returns:
+            Updated system prompt with fresh context
+        """
+        try:
+            refreshed_prompt = self._build_enhanced_system_prompt()
+            self.system_prompt = refreshed_prompt
+            print("✅ Project context refreshed successfully")
+            return refreshed_prompt
+        except Exception as e:
+            print(f"❌ Failed to refresh context: {e}")
+            return self.system_prompt
+    
+    def get_current_context_summary(self) -> str:
+        """Get a summary of the current context being used.
+        
+        Returns:
+            Human-readable summary of context configuration
+        """
+        summary_parts = [
+            f"**Working Directory:** {self.working_directory.absolute()}",
+        ]
+        
+        if self.include_directory_structure:
+            summary_parts.append("✅ Directory structure included")
+        else:
+            summary_parts.append("❌ Directory structure excluded")
+            
+        if self.include_project_files:
+            patterns = self.custom_file_patterns or ['README.md', 'AmazonQ.md', 'CHANGELOG.md', 'package.json', 'pyproject.toml']
+            summary_parts.append(f"✅ Project files included: {', '.join(patterns)}")
+        else:
+            summary_parts.append("❌ Project files excluded")
+            
+        if self.include_git_context:
+            summary_parts.append("✅ Git context included")
+        else:
+            summary_parts.append("❌ Git context excluded")
+        
+        return "\n".join(summary_parts)
+    
+    def get_raw_context(self) -> str:
+        """Get the raw context that was added to the system prompt.
+        
+        Returns:
+            The raw context string that was appended to the system prompt
+        """
+        try:
+            context_builder = ContextBuilder(self.working_directory)
+            return context_builder.build_full_context(
+                include_directory=self.include_directory_structure,
+                include_files=self.include_project_files,
+                include_git=self.include_git_context,
+                file_patterns=self.custom_file_patterns
+            )
+        except Exception as e:
+            return f"Error generating context: {e}"
